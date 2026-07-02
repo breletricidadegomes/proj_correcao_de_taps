@@ -21,4 +21,4 @@ Este projeto automatiza essa análise, validando os níveis de tensão (p.u.) e 
 
 1. Clone este repositório:
 ```bash
-git clone [https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git](https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git)
+git clone [https://github.com/breletricidadegomes/proj_correcao_de_taps.git](https://github.com/breletricidadegomes/proj_correcao_de_taps.git)
