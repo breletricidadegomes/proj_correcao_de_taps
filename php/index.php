@@ -23,7 +23,7 @@ try {
 
 $cfg = app_config();
 $operadorServidor = ($cfg['usar_remote_user'] && !empty($_SERVER['REMOTE_USER'])) ? $_SERVER['REMOTE_USER'] : '';
-$versaoAssets = '1.0.0'; // incremente para forçar recarga do cache do navegador
+$versaoAssets = '1.1.0'; // incremente para forçar recarga do cache do navegador
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR" data-bs-theme="dark">
@@ -197,6 +197,8 @@ $versaoAssets = '1.0.0'; // incremente para forçar recarga do cache do navegado
                                 <li class="nav-item"><button class="nav-link" data-aba="nos" type="button">Nós</button></li>
                                 <li class="nav-item"><button class="nav-link" data-aba="trechos" type="button">Trechos</button></li>
                                 <li class="nav-item"><button class="nav-link" data-aba="otimizacao" type="button">Otimização</button></li>
+                                <li class="nav-item"><button class="nav-link" data-aba="hospedagem" type="button">Hospedagem GD</button></li>
+                                <li class="nav-item"><button class="nav-link" data-aba="diaria" type="button">Curva 24 h</button></li>
                                 <li class="nav-item"><button class="nav-link" data-aba="historico" type="button">Histórico</button></li>
                             </ul>
                         </div>
@@ -243,6 +245,106 @@ $versaoAssets = '1.0.0'; // incremente para forçar recarga do cache do navegado
                                     <div class="col-12 col-lg-6">
                                         <div class="coi-chart-box coi-chart-sm"><canvas id="chart-otim" aria-label="Tensão mínima e máxima por posição de tap"></canvas></div>
                                     </div>
+                                </div>
+                            </div>
+
+                            <!-- ============ CAPACIDADE DE HOSPEDAGEM DE GD ============ -->
+                            <div class="coi-aba" id="aba-hospedagem">
+                                <div class="coi-toolbar mb-3">
+                                    <div>
+                                        <label for="sel-no-hosp" class="coi-label d-block">Nó de conexão da nova GD</label>
+                                        <select id="sel-no-hosp" class="form-select form-select-sm coi-select"></select>
+                                    </div>
+                                    <div class="form-check mt-3">
+                                        <input class="form-check-input" type="checkbox" id="chk-mapa" checked>
+                                        <label class="form-check-label coi-hint" for="chk-mapa">Calcular mapa de todos os nós</label>
+                                    </div>
+                                    <button type="button" class="btn btn-primary btn-sm coi-btn-main" id="btn-hospedagem">Calcular capacidade</button>
+                                </div>
+                                <p class="coi-hint mb-3">
+                                    Usa o cenário da coluna esquerda (tensão AT, patamar de carga e despacho da GD já existente).
+                                    Pior caso para sobretensão: patamar <strong>Leve</strong> com GD existente a 100%.
+                                    Viável = todos os nós em faixa adequada, cabos e trafo da SE até 100%.
+                                </p>
+
+                                <div id="hosp-vazio" class="coi-hint">Escolha o nó e clique em “Calcular capacidade”.</div>
+                                <div id="hosp-resultado" hidden>
+                                    <div class="row g-2 mb-3">
+                                        <div class="col-12 col-md-4"><div class="coi-kpi" id="hosp-kpi-fixo"><div class="coi-kpi-label">Com o tap atual</div><div class="coi-kpi-value">—</div><div class="coi-kpi-sub">&nbsp;</div></div></div>
+                                        <div class="col-12 col-md-4"><div class="coi-kpi" id="hosp-kpi-melhor"><div class="coi-kpi-label">Ajustando o tap</div><div class="coi-kpi-value">—</div><div class="coi-kpi-sub">&nbsp;</div></div></div>
+                                        <div class="col-12 col-md-4"><div class="coi-kpi" id="hosp-kpi-reverso"><div class="coi-kpi-label">Fluxo reverso na saída do alimentador</div><div class="coi-kpi-value">—</div><div class="coi-kpi-sub">&nbsp;</div></div></div>
+                                    </div>
+                                    <div class="coi-chart-box coi-chart-sm mb-3"><canvas id="chart-hosp" aria-label="Tensão máxima da rede em função da GD adicional"></canvas></div>
+                                    <div id="hosp-mapa-wrap" hidden>
+                                        <h3 class="coi-subtitulo">Mapa de hospedagem</h3>
+                                        <div class="table-responsive coi-table-wrap">
+                                            <table class="table table-sm coi-table" id="tbl-hosp-mapa">
+                                                <thead><tr><th>Nó</th><th>Descrição</th><th class="num">Dist. (km)</th><th class="coi-col-barra">Capacidade (kW): tap atual / ajustando o tap</th><th class="num">Tap necessário</th><th>Limitante (ajustando o tap)</th></tr></thead>
+                                                <tbody></tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- ============ SIMULAÇÃO DE 24 HORAS ============ -->
+                            <div class="coi-aba" id="aba-diaria">
+                                <div class="coi-toolbar mb-2">
+                                    <div>
+                                        <label for="sel-perfil-carga" class="coi-label d-block">Perfil de carga</label>
+                                        <select id="sel-perfil-carga" class="form-select form-select-sm coi-select-sm">
+                                            <option value="misto">Misto</option>
+                                            <option value="residencial">Residencial</option>
+                                            <option value="comercial">Comercial</option>
+                                            <option value="industrial">Industrial</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label for="sel-perfil-ceu" class="coi-label d-block">Céu</label>
+                                        <select id="sel-perfil-ceu" class="form-select form-select-sm coi-select-sm">
+                                            <option value="ensolarado">Limpo</option>
+                                            <option value="parcial">Parcialmente nublado</option>
+                                            <option value="nublado">Encoberto</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label for="num-pico-carga" class="coi-label d-block">Pico de carga (%)</label>
+                                        <input type="number" id="num-pico-carga" class="form-control form-control-sm coi-input-num" min="0" max="150" step="5" value="100">
+                                    </div>
+                                    <div>
+                                        <label for="num-pico-gd" class="coi-label d-block">Pico da GD (%)</label>
+                                        <input type="number" id="num-pico-gd" class="form-control form-control-sm coi-input-num" min="0" max="150" step="5" value="100">
+                                    </div>
+                                    <div>
+                                        <label for="num-vref" class="coi-label d-block">V ref. relé (p.u.)</label>
+                                        <input type="number" id="num-vref" class="form-control form-control-sm coi-input-num" min="0.95" max="1.05" step="0.005" value="1.01">
+                                    </div>
+                                    <div>
+                                        <label for="num-banda" class="coi-label d-block">Banda morta (%)</label>
+                                        <input type="number" id="num-banda" class="form-control form-control-sm coi-input-num" min="0.5" max="5" step="0.5" value="2">
+                                    </div>
+                                    <button type="button" class="btn btn-primary btn-sm coi-btn-main" id="btn-diaria">Simular 24 h</button>
+                                </div>
+                                <p class="coi-hint mb-3">96 intervalos de 15 min. O relé automático mede a tensão no ponto de instalação do equipamento selecionado e comuta para manter V ref ± banda/2. O “tap ótimo” mostra o melhor resultado possível a cada intervalo.</p>
+
+                                <div id="dia-vazio" class="coi-hint">Ajuste os perfis e clique em “Simular 24 h”.</div>
+                                <div id="dia-resultado" hidden>
+                                    <div class="table-responsive mb-3">
+                                        <table class="table table-sm coi-table" id="tbl-dia-resumo">
+                                            <thead><tr><th>Estratégia</th><th class="num">Comutações</th><th class="num">Fora da faixa</th><th class="num">DRP diário</th><th class="num">DRC diário</th><th class="num">V máx do dia</th><th class="num">V mín do dia</th><th class="num">Perdas (kWh)</th></tr></thead>
+                                            <tbody></tbody>
+                                        </table>
+                                    </div>
+                                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                                        <span class="coi-label">Mostrar no gráfico:</span>
+                                        <div class="btn-group btn-group-sm" role="group" aria-label="Estratégia exibida">
+                                            <button type="button" class="btn coi-btn-ghost" data-estrategia="fixo">Tap fixo</button>
+                                            <button type="button" class="btn coi-btn-ghost active" data-estrategia="automatico">Relé automático</button>
+                                            <button type="button" class="btn coi-btn-ghost" data-estrategia="otimo">Tap ótimo</button>
+                                        </div>
+                                    </div>
+                                    <div class="coi-chart-box mb-3"><canvas id="chart-dia-tensao" aria-label="Tensão mínima, máxima e posição de tap ao longo do dia"></canvas></div>
+                                    <div class="coi-chart-box coi-chart-xs"><canvas id="chart-dia-perfil" aria-label="Carga e geração distribuída do alimentador ao longo do dia"></canvas></div>
                                 </div>
                             </div>
 

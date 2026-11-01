@@ -211,7 +211,7 @@ body {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: .05em;
-    padding: .7rem 1rem;
+    padding: .7rem .8rem;
     background: transparent;
 }
 .coi-tabs .nav-link:hover { color: var(--coi-text); }
@@ -320,3 +320,23 @@ body {
     .coi-navbar, aside, .coi-tabs, .toast-container { display: none !important; }
     body, .coi-card, .coi-kpi { background: #fff !important; color: #000 !important; }
 }
+
+/* ---------- Hospedagem de GD e simulação de 24 h (v1.1) ---------- */
+.coi-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .75rem 1rem; }
+.coi-select-sm { width: auto; min-width: 150px; background-color: var(--coi-surface-2); border-color: var(--coi-border); color: var(--coi-text); }
+.coi-input-num { width: 96px; background-color: var(--coi-surface-2); border-color: var(--coi-border); color: var(--coi-text); font-variant-numeric: tabular-nums; }
+.coi-subtitulo { font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--coi-text-muted); margin: .25rem 0 .5rem; }
+.coi-chart-xs { height: 190px; }
+.coi-col-barra { min-width: 260px; }
+
+/* Barras duplas do mapa de hospedagem */
+.hosp-barras { display: grid; gap: 3px; }
+.hosp-barra { display: grid; grid-template-columns: 1fr 64px; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; font-size: .78rem; }
+.hosp-barra .trilho { height: 8px; background: var(--coi-surface-2); border-radius: 2px; overflow: hidden; }
+.hosp-barra .preench { height: 100%; border-radius: 2px; }
+.hosp-barra.fixo .preench { background: var(--coi-base-line); }
+.hosp-barra.melhor .preench { background: var(--coi-accent); }
+.hosp-barra span { text-align: right; }
+.coi-table tr.linha-selecionada td { background: var(--coi-band-adeq); }
+
+.coi-col-limitante { font-size: .76rem; }

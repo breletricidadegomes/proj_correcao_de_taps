@@ -5,6 +5,10 @@ Ferramenta web para centros de operação (COI/COD) e engenharia de distribuiç�
 transformadores de subestação e em reguladores de tensão de linha de alimentadores MT,
 com indicadores de conformidade de tensão do PRODIST Módulo 8.
 
+Também responde duas perguntas de planejamento ligadas à geração distribuída:
+**quanta GD cada ponto da rede suporta** (capacidade de hospedagem) e **como a tensão e o
+comutador se comportam ao longo de um dia** de carga e sol variáveis.
+
 Porte da versão Python/Flask + pandapower para PHP puro, sem dependências de servidor
 além de PDO.
 
@@ -27,13 +31,17 @@ Nenhuma internet é necessária: Bootstrap 5.3.3 e Chart.js 4.4.1 estão em `ass
 ```
 index.php                     Painel principal (dashboard + formulário de simulação)
 backend/
-  processar_tap.php           Endpoint JSON (simular, otimizar, registrar, histórico)
+  processar_tap.php           Endpoint JSON (simular, otimizar, registrar, histórico,
+                              hospedagem, diaria)
   bootstrap.php               Configuração, sessão, CSRF, fábrica de repositório
   lib/
     Complexo.php              Aritmética complexa
     FluxoCargaRadial.php      Fluxo de carga (varredura inversa/direta) — substitui pandapower
     ProdistTensao.php         Faixas adequada/precária/crítica (PRODIST Mód. 8)
     SimuladorTap.php          Monta o modelo, simula, calcula indicadores, otimiza tap
+    AnaliseHospedagem.php     Capacidade de hospedagem de GD por nó e mapa do alimentador
+    CurvasTipicas.php         Curvas diárias de carga (4 perfis) e de irradiância (3 céus)
+    SimulacaoDiaria.php       Série de 24 h: tap fixo × relé automático × tap ótimo
     RepositorioInterface.php  Contrato de acesso a dados
     RepositorioPDO.php        MySQL/PostgreSQL (prepared statements)
     RepositorioDemo.php       Modo demonstração (sem banco; histórico na sessão)
@@ -44,6 +52,7 @@ assets/vendor/                Bootstrap e Chart.js locais (licença MIT)
 config/config.php             Configuração (banco, modo demo, parâmetros de cálculo)
 sql/schema_mysql.sql          Esquema + dados de exemplo (MySQL)
 sql/schema_postgresql.sql     Esquema + dados de exemplo (PostgreSQL)
+tests/executar_testes.php     Testes do motor (php tests/executar_testes.php)
 ```
 
 ## 3. Implantação
@@ -75,7 +84,7 @@ Em `config/config.php`: `'driver' => 'pgsql'`, `'porta' => 5432`.
   (requer `AllowOverride All` ou equivalente).
 - **Nginx**: adicione ao bloco `server`:
   ```nginx
-  location ~ ^/(config|sql|backend/lib)/ { deny all; }
+  location ~ ^/(config|sql|tests|backend/lib)/ { deny all; }
   location ~ \.(md|sql)$ { deny all; }
   ```
 - **IIS**: negue as mesmas pastas em *Request Filtering → Hidden Segments*.
@@ -103,9 +112,50 @@ Se o servidor autentica via AD/LDAP (Kerberos, Basic, `mod_auth_*`), o usuário 
 
 ### Otimização de tap
 Varre todas as posições do equipamento selecionado e ordena por:
+0. barra da SE dentro da faixa adequada (restrição dura: ela alimenta os demais
+   alimentadores, mesmo sem UCs cadastradas) →
 1. menos UCs em faixa crítica → 2. menos UCs em faixa precária →
 3. menor desvio |1 − Vmín| + |1 − Vmáx| → 4. menos degraus a partir do tap atual →
 5. menores perdas.
+
+### Capacidade de hospedagem de GD (aba "Hospedagem GD")
+Quantos kW de GD podem ser ligados num nó antes da primeira violação. Um cenário é
+viável quando todos os nós estão em faixa adequada, nenhum trecho passa de 100% da
+ampacidade e o trafo da SE não passa de 100% da potência nominal.
+
+- **Com o tap atual**: comutadores parados.
+- **Ajustando o tap**: para cada valor testado, procura uma posição do equipamento
+  selecionado que torne o cenário viável, começando pelas mais próximas da atual.
+  Informa o tap necessário.
+- **Busca**: duplicação a partir de 250 kW até o primeiro valor inviável, depois
+  bisseção até 10 kW (configurável em `config.php`, bloco `hospedagem`).
+- **Fluxo reverso**: menor GD que inverte o fluxo no primeiro trecho do caminho SE → nó
+  (o alimentador passa a exportar para a barra).
+- **Mapa**: a mesma análise para todos os nós, com o fator limitante de cada um.
+
+Use o patamar **Leve** com a GD existente a 100%: é o pior caso para sobretensão.
+A busca supõe que, a partir de um cenário viável, mais GD não corrige uma violação
+causada por GD, o que vale para sobretensão e sobrecarga.
+
+### Simulação de 24 horas (aba "Curva 24 h")
+96 intervalos de 15 min. Carga e GD seguem curvas típicas normalizadas
+(`CurvasTipicas.php`; substitua pelas curvas da distribuidora, por exemplo CRVCRG da BDGD).
+Três estratégias para o equipamento selecionado:
+
+| Estratégia | Comportamento |
+|---|---|
+| Tap fixo | Comutador parado na posição atual |
+| Relé automático | Mede a tensão no nó de instalação e comuta um degrau por vez até voltar a V<sub>ref</sub> ± banda/2 (como um relé 90) |
+| Tap ótimo | Melhor posição a cada intervalo pelo critério da otimização; limite teórico para comparação |
+
+Indicadores diários: comutações (desgaste do comutador), % de intervalos fora da
+faixa, DRP/DRC diários estimados (média no dia da fração de UCs em faixa
+precária/crítica, análogo temporal ao indicador do PRODIST), V máx/mín com horário,
+perdas em kWh e horas com fluxo reverso.
+
+O relé só enxerga a própria barra: com GD distante do equipamento, o fim do
+alimentador pode passar de 1,05 p.u. sem que ele perceba. A simulação do CTR-02 com
+céu parcialmente nublado mostra esse efeito.
 
 ## 5. Indicadores
 
@@ -148,5 +198,18 @@ Varre todas as posições do equipamento selecionado e ordena por:
 
 - Modelo equilibrado (sequência positiva); desequilíbrio entre fases não é avaliado.
 - Rede apenas MT (nós BT exigiriam trafos de distribuição como ramos adicionais).
-- Bancos de capacitores e controle automático de reguladores (LDC/compensação de queda)
-  não são modelados; o tap é sempre informado/otimizado manualmente.
+- Bancos de capacitores e compensação de queda na linha (LDC) não são modelados; o relé
+  automático da simulação de 24 h controla apenas a tensão no ponto de instalação, sem
+  temporização entre comutações.
+- A simulação de 24 h aplica a mesma curva de carga a todos os nós, inclusive à carga
+  equivalente da barra da SE.
+
+## 9. Testes
+
+```bash
+php tests/executar_testes.php
+```
+
+20 verificações sem dependências externas (roda em PHP 5.5): resultado do fluxo de
+carga contra o pandapower, efeito do tap, capacidade de hospedagem (viável no limite,
+inviável 20 kW acima) e coerência entre as estratégias de 24 h.

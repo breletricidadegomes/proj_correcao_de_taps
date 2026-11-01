@@ -57,6 +57,16 @@ return array(
     ),
 
     // -------------------------------------------------------------------------
+    // CAPACIDADE DE HOSPEDAGEM DE GD
+    // -------------------------------------------------------------------------
+    'hospedagem' => array(
+        'resolucao_kw'     => 10,     // precisão da resposta (kW)
+        'passo_inicial_kw' => 250,    // primeiro valor testado; depois dobra
+        'max_kw'           => 30000,  // teto da busca
+        'limite_nos_mapa'  => 60,     // mapa completo só até esta quantidade de nós
+    ),
+
+    // -------------------------------------------------------------------------
     // SEGURANÇA
     // -------------------------------------------------------------------------
     // Exibir mensagens técnicas de erro no JSON (apenas em homologação!)

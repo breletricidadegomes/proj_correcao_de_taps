@@ -95,7 +95,9 @@ class SimuladorTap
                 }
             }
 
-            $pKw = (float) $no['carga_kw'] * $fc - (float) $no['gd_kw'] * $fg;
+            // GD adicional hipotética (estudo de capacidade de hospedagem)
+            $gdExtra = isset($params['gd_extra'][$no['codigo']]) ? (float) $params['gd_extra'][$no['codigo']] : 0.0;
+            $pKw = (float) $no['carga_kw'] * $fc - (float) $no['gd_kw'] * $fg - $gdExtra;
             $qKvar = (float) $no['carga_kvar'] * $fc;
 
             $modelo[$idx] = array(
@@ -148,7 +150,9 @@ class SimuladorTap
             if ($queda > $quedaMax) { $quedaMax = $queda; }
 
             $cargaTotalKw += (float) $no['carga_kw'] * $fc;
-            $gdTotalKw    += (float) $no['gd_kw'] * $fg;
+            $gdNo = (float) $no['gd_kw'] * $fg
+                  + (isset($params['gd_extra'][$no['codigo']]) ? (float) $params['gd_extra'][$no['codigo']] : 0.0);
+            $gdTotalKw    += $gdNo;
 
             $nos[] = array(
                 'codigo'        => $no['codigo'],
@@ -162,7 +166,7 @@ class SimuladorTap
                 'classe'        => $cls['classe'],
                 'sentido'       => $cls['sentido'],
                 'consumidores'  => $ucs,
-                'gd_kw'         => round((float) $no['gd_kw'] * $fg, 1),
+                'gd_kw'         => round($gdNo, 1),
                 'regulador'     => (isset($equipPorNo[$no['codigo']]) && $equipPorNo[$no['codigo']]['tipo'] === 'REGULADOR')
                                    ? $equipPorNo[$no['codigo']]['codigo'] : null,
             );
@@ -229,6 +233,9 @@ class SimuladorTap
             'nos_precarios'       => $cont['nos_precarios'],
             'nos_criticos'        => $cont['nos_criticos'],
             'desvio'              => round(abs(1.0 - $vMin) + abs(1.0 - $vMax), 4),
+            // A barra da SE alimenta também os outros alimentadores: fora da
+            // faixa adequada ela é restrição dura, mesmo sem UCs cadastradas.
+            'barra_se_fora'       => $nos[0]['classe'] !== ProdistTensao::ADEQUADA,
             'fluxo_reverso'       => $reversoTrecho || ($trafoRes !== null && $trafoRes['fluxo_reverso']),
             'iteracoes'           => $res['iteracoes'],
         );
@@ -247,6 +254,7 @@ class SimuladorTap
      * Varre todas as posições de tap do equipamento alvo e recomenda a melhor.
      *
      * Critérios (ordem de prioridade):
+     *   0. barra da SE dentro da faixa adequada (restrição dura)
      *   1. menor nº de UCs em faixa CRÍTICA
      *   2. menor nº de UCs em faixa PRECÁRIA
      *   3. menor desvio |1 - Vmín| + |1 - Vmáx|  (perfil centrado em 1,0 p.u.)
@@ -275,6 +283,7 @@ class SimuladorTap
                     'perdas_kw'    => $ind['perdas_kw'],
                     'ucs_precaria' => $ind['ucs_precaria'],
                     'ucs_critica'  => $ind['ucs_critica'],
+                    'barra_se_fora'=> $ind['barra_se_fora'] ? 1 : 0,
                     'status'       => ($ind['nos_precarios'] + $ind['nos_criticos']) === 0 ? 'OK' : 'VIOLACAO',
                     'degraus'      => abs($t - $tapAtual),
                 );
@@ -309,7 +318,7 @@ class SimuladorTap
 
     private function comparar($a, $b)
     {
-        $chaves = array('ucs_critica', 'ucs_precaria', 'desvio', 'degraus', 'perdas_kw');
+        $chaves = array('barra_se_fora', 'ucs_critica', 'ucs_precaria', 'desvio', 'degraus', 'perdas_kw');
         foreach ($chaves as $k) {
             $va = round($a[$k], 3);
             $vb = round($b[$k], 3);
@@ -317,6 +326,28 @@ class SimuladorTap
             if ($va > $vb) { return 1; }
         }
         return 0;
+    }
+
+    /**
+     * Posições de tap do equipamento ordenadas pela distância ao tap de
+     * referência (menos degraus primeiro). Usado para achar a manobra mínima.
+     */
+    public static function tapsPorProximidade(array $eq, $tapReferencia)
+    {
+        $lista = array();
+        for ($t = (int) $eq['tap_min']; $t <= (int) $eq['tap_max']; $t++) {
+            $lista[] = $t;
+        }
+        $ref = (int) $tapReferencia;
+        usort($lista, function ($a, $b) use ($ref) {
+            $da = abs($a - $ref);
+            $db = abs($b - $ref);
+            if ($da === $db) {
+                return $a - $b;
+            }
+            return $da - $db;
+        });
+        return $lista;
     }
 
     /** Relação de transformação do comutador para a posição informada */
