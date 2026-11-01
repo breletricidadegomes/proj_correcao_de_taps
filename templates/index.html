@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BrProjetcEletric - Simulador</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    
+    <style>
+        .section { display: none; }
+        .section.active { display: block; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        .nav-btn.active { background-color: #1e3a8a; color: #ffffff; border-left: 4px solid #f59e0b; }
+        
+        .badge { padding: 0.25rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; display: inline-block;}
+        .badge-ok { background-color: #dcfce7; color: #166534; }
+        .badge-warning { background-color: #fef08a; color: #854d0e; }
+        .badge-danger { background-color: #fee2e2; color: #991b1b; }
+        .badge-normal { background-color: #e0f2fe; color: #075985; }
+        .badge-reverse { background-color: #fce7f3; color: #9d174d; }
+        .status-badge { padding: 0.15rem 0.5rem; border-radius: 0.25rem; font-size: 0.8rem; font-weight: bold; }
+        .status-normal { background-color: #dcfce7; color: #166534; }
+        .status-warning { background-color: #fee2e2; color: #991b1b; }
+
+        table { width: 100%; text-align: left; border-collapse: collapse; }
+        th { background-color: #f3f4f6; padding: 0.75rem; font-size: 0.85rem; color: #4b5563; border-bottom: 2px solid #e5e7eb; }
+        td { padding: 0.75rem; font-size: 0.9rem; border-bottom: 1px solid #e5e7eb; color: #1f2937; }
+        .tap-best { background-color: #f0fdf4; border-left: 4px solid #22c55e;}
+        .tap-violation { background-color: #fef2f2; opacity: 0.7; }
+
+        .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; border-radius: 8px; color: white; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: opacity 0.3s; z-index: 1000;}
+        .toast.hidden { opacity: 0; pointer-events: none; }
+        .alert-item { padding: 10px; margin-bottom: 8px; border-radius: 6px; font-size: 0.9rem; }
+        .alert-info { background-color: #e0f2fe; color: #0369a1; border-left: 4px solid #0284c7; }
+        .alert-warning { background-color: #fef3c7; color: #b45309; border-left: 4px solid #d97706; }
+        .alert-danger { background-color: #fee2e2; color: #b91c1c; border-left: 4px solid #ef4444; }
+    </style>
+</head>
+<body class="bg-slate-50 flex h-screen overflow-hidden text-slate-800">
+
+    <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col shadow-xl z-20">
+        <div class="p-6 border-b border-slate-700">
+            <h1 class="text-xl font-bold text-white tracking-wide">BrProjetc<span class="text-amber-500">Eletric</span></h1>
+            <p class="text-xs text-slate-400 mt-1">Análise de GD e Fluxo</p>
+        </div>
+        
+        <nav class="flex-1 mt-6">
+            <button onclick="showSection('dashboard', this)" class="nav-btn active w-full text-left px-6 py-3 hover:bg-slate-800 transition">📊 Dashboard Interativo</button>
+            <button onclick="showSection('topology', this)" class="nav-btn w-full text-left px-6 py-3 hover:bg-slate-800 transition">🔌 Topologia da Rede</button>
+            <button onclick="showSection('tap', this)" class="nav-btn w-full text-left px-6 py-3 hover:bg-slate-800 transition">⚙️ Otimização de Tap</button>
+        </nav>
+
+        <div class="p-6 bg-slate-800 text-xs rounded-t-lg mx-2 mb-2">
+            <div class="flex justify-between mb-2"><span>Status Tensão:</span> <span id="net-status-badge" class="status-badge status-normal">Calculando...</span></div>
+            <div class="flex justify-between"><span>Fluxo Reverso:</span> <span id="reverse-badge" class="status-badge status-normal">Calculando...</span></div>
+        </div>
+    </aside>
+
+    <main class="flex-1 flex flex-col h-screen overflow-y-auto">
+        
+        <header class="bg-white shadow-sm p-6 border-b border-slate-200">
+            <h2 class="text-lg font-bold text-slate-700 mb-4">Parâmetros de Simulação (Tempo Real)</h2>
+            <div class="grid grid-cols-5 gap-6">
+                <div class="bg-slate-50 p-3 rounded border border-slate-200">
+                    <label class="block text-xs font-bold text-slate-500 mb-1">Tensão na SE (p.u.)</label>
+                    <div class="flex items-center gap-2">
+                        <input type="range" id="sl-vm" min="95" max="105" value="100" class="w-full" oninput="updateLabel('sl-vm', 'lbl-vm', 0.01, 2); runSimulation()">
+                        <span id="lbl-vm" class="text-sm font-bold text-slate-700 w-10 text-right">1.00</span>
+                    </div>
+                </div>
+                <div class="bg-amber-50 p-3 rounded border border-amber-200">
+                    <label class="block text-xs font-bold text-amber-700 mb-1">Injeção GD (kW)</label>
+                    <div class="flex items-center gap-2">
+                        <input type="range" id="sl-gd" min="0" max="60" value="0" step="1" class="w-full" oninput="updateLabel('sl-gd', 'lbl-gd'); runSimulation()">
+                        <span id="lbl-gd" class="text-sm font-bold text-amber-700 w-10 text-right">0</span>
+                    </div>
+                </div>
+                <div class="bg-blue-50 p-3 rounded border border-blue-200">
+                    <label class="block text-xs font-bold text-blue-700 mb-1">Carga Poste A (kW)</label>
+                    <div class="flex items-center gap-2">
+                        <input type="range" id="sl-la" min="0" max="50" value="10" step="1" class="w-full" oninput="updateLabel('sl-la', 'lbl-la'); runSimulation()">
+                        <span id="lbl-la" class="text-sm font-bold text-blue-700 w-10 text-right">10</span>
+                    </div>
+                </div>
+                <div class="bg-blue-50 p-3 rounded border border-blue-200">
+                    <label class="block text-xs font-bold text-blue-700 mb-1">Carga Poste GD (kW)</label>
+                    <div class="flex items-center gap-2">
+                        <input type="range" id="sl-lb" min="0" max="50" value="10" step="1" class="w-full" oninput="updateLabel('sl-lb', 'lbl-lb'); runSimulation()">
+                        <span id="lbl-lb" class="text-sm font-bold text-blue-700 w-10 text-right">10</span>
+                    </div>
+                </div>
+                <div class="bg-blue-50 p-3 rounded border border-blue-200">
+                    <label class="block text-xs font-bold text-blue-700 mb-1">Carga Poste C (kW)</label>
+                    <div class="flex items-center gap-2">
+                        <input type="range" id="sl-lc" min="0" max="50" value="10" step="1" class="w-full" oninput="updateLabel('sl-lc', 'lbl-lc'); runSimulation()">
+                        <span id="lbl-lc" class="text-sm font-bold text-blue-700 w-10 text-right">10</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="p-6 flex-1">
+            
+            <section id="sec-dashboard" class="section active">
+                <div class="grid grid-cols-4 gap-6 mb-8">
+                    <div class="bg-white p-5 rounded-lg shadow-sm border border-slate-200">
+                        <p class="text-slate-500 text-sm font-semibold">Geração Total GD</p>
+                        <p class="text-3xl font-bold text-amber-500 mt-1"><span id="kpi-gen">0</span> <span class="text-lg">kW</span></p>
+                    </div>
+                    <div class="bg-white p-5 rounded-lg shadow-sm border border-slate-200">
+                        <p class="text-slate-500 text-sm font-semibold">Consumo Total</p>
+                        <p class="text-3xl font-bold text-blue-600 mt-1"><span id="kpi-load">0</span> <span class="text-lg">kW</span></p>
+                    </div>
+                    <div class="bg-white p-5 rounded-lg shadow-sm border border-slate-200">
+                        <p class="text-slate-500 text-sm font-semibold">Injeção Líquida</p>
+                        <p class="text-3xl font-bold mt-1"><span id="kpi-net">0</span> <span class="text-lg">kW</span></p>
+                    </div>
+                    <div class="bg-white p-5 rounded-lg shadow-sm border border-slate-200">
+                        <p class="text-slate-500 text-sm font-semibold">Posição do Tap</p>
+                        <p class="text-3xl font-bold text-slate-700 mt-1"><span id="kpi-tap">0</span></p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-6 mb-8">
+                    <div class="col-span-1 bg-white p-5 rounded-lg shadow-sm border border-slate-200 h-80 overflow-y-auto">
+                        <h3 class="font-bold text-slate-700 mb-4 border-b pb-2">Diagnóstico</h3>
+                        <div id="alerts-list"></div>
+                    </div>
+                    <div class="col-span-2 bg-white p-5 rounded-lg shadow-sm border border-slate-200 h-80">
+                        <h3 class="font-bold text-slate-700 mb-2">Perfil de Tensão nos Barramentos</h3>
+                        <div class="h-64"><canvas id="chart-voltage"></canvas></div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="bg-white p-5 rounded-lg shadow-sm border border-slate-200">
+                        <h3 class="font-bold text-slate-700 mb-4">Fluxo de Potência nas Linhas (kW)</h3>
+                        <div class="h-48 mb-4"><canvas id="chart-lines"></canvas></div>
+                        <div class="overflow-x-auto">
+                            <table id="tbl-lines">
+                                <thead><tr><th>Linha ID</th><th>Trecho</th><th>P Saída</th><th>P Chegada</th><th>Carreg. (%)</th><th>Status</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="space-y-6">
+                        <div class="bg-white p-5 rounded-lg shadow-sm border border-slate-200">
+                            <h3 class="font-bold text-slate-700 mb-4">Transformador</h3>
+                            <div class="overflow-x-auto">
+                                <table id="tbl-trafos">
+                                    <thead><tr><th>P Alta (kW)</th><th>P Baixa (kW)</th><th>Carreg. (%)</th><th>Tap</th><th>Fluxo</th></tr></thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="bg-white p-5 rounded-lg shadow-sm border border-slate-200">
+                            <h3 class="font-bold text-slate-700 mb-4">Barramentos (Detalhado)</h3>
+                            <div class="overflow-x-auto max-h-48 overflow-y-auto">
+                                <table id="tbl-buses">
+                                    <thead><tr><th>ID</th><th>Nome</th><th>Tensão (p.u.)</th><th>Ângulo</th><th>Status</th></tr></thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="sec-topology" class="section">
+                <div class="bg-white p-8 rounded-lg shadow-sm border border-slate-200 flex justify-center items-center min-h-[600px]">
+                    <div class="relative w-full max-w-4xl text-center">
+                        <h2 class="text-xl font-bold text-slate-700 mb-6">Diagrama Unifilar</h2>
+                        <svg id="topo-svg" width="600" height="450" class="mx-auto bg-slate-50 border border-slate-200 rounded-lg shadow-inner"></svg>
+                    </div>
+                </div>
+            </section>
+
+            <section id="sec-tap" class="section">
+                <div class="bg-white p-8 rounded-lg shadow-sm border border-slate-200 max-w-5xl mx-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-700">Otimização de Tap do Transformador</h2>
+                            <p class="text-slate-500 text-sm">Avalia posições (-2 a +2) para o cenário atual. Tap no lado de alta: <strong>positivo reduz</strong> a tensão na BT, negativo eleva.</p>
+                        </div>
+                        <button onclick="runTapOptimization()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded shadow transition">
+                            ▶ Executar Análise
+                        </button>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-8 mt-8">
+                        <div>
+                            <h3 class="font-bold text-slate-700 mb-4 border-b pb-2">Resultados</h3>
+                            <div id="tap-results" class="text-sm">Clique no botão acima para rodar a otimização...</div>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-slate-700 mb-4 border-b pb-2">Tensão vs Tap</h3>
+                            <div class="h-64"><canvas id="chart-tap"></canvas></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <div id="toast" class="toast hidden">Mensagem</div>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+
+</body>
+</html>
