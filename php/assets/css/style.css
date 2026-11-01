@@ -1,0 +1,322 @@
+/* =============================================================================
+   Regulação de Tensão · Mudança de Tap — estilos do painel
+   -----------------------------------------------------------------------------
+   Pensado para centros de operação (COI/COD): fundo escuro de baixo brilho,
+   números grandes com algarismos tabulares e cores de status inequívocas.
+   Os dois temas usam os mesmos tokens; o Bootstrap 5.3 alterna via
+   <html data-bs-theme="dark|light">.
+   ============================================================================= */
+
+/* ---------- Tokens: tema ESCURO (padrão) ---------- */
+[data-bs-theme="dark"] {
+    --coi-bg:          #0b111a;
+    --coi-surface:     #121a26;
+    --coi-surface-2:   #18222f;
+    --coi-border:      #243244;
+    --coi-text:        #e6edf5;
+    --coi-text-muted:  #8b9bb0;
+    --coi-accent:      #3b9cff;
+    --coi-ok:          #2fd27a;
+    --coi-warn:        #ffb020;
+    --coi-crit:        #ff4d5e;
+    --coi-reverse:     #c77dff;
+    --coi-band-adeq:   rgba(47, 210, 122, 0.10);
+    --coi-band-prec:   rgba(255, 176, 32, 0.10);
+    --coi-grid:        rgba(139, 155, 176, 0.16);
+    --coi-base-line:   #8b9bb0;
+    --bs-body-bg:      var(--coi-bg);
+    --bs-body-color:   var(--coi-text);
+}
+
+/* ---------- Tokens: tema CLARO ---------- */
+[data-bs-theme="light"] {
+    --coi-bg:          #eef2f6;
+    --coi-surface:     #ffffff;
+    --coi-surface-2:   #f5f7fa;
+    --coi-border:      #d5dde7;
+    --coi-text:        #13202f;
+    --coi-text-muted:  #5b6b7f;
+    --coi-accent:      #0a66d1;
+    --coi-ok:          #11834a;
+    --coi-warn:        #b36b00;
+    --coi-crit:        #c81e32;
+    --coi-reverse:     #7b2fbf;
+    --coi-band-adeq:   rgba(17, 131, 74, 0.08);
+    --coi-band-prec:   rgba(179, 107, 0, 0.09);
+    --coi-grid:        rgba(19, 32, 47, 0.10);
+    --coi-base-line:   #8492a6;
+    --bs-body-bg:      var(--coi-bg);
+    --bs-body-color:   var(--coi-text);
+}
+
+html, body {
+    background: var(--coi-bg);
+    color: var(--coi-text);
+}
+
+body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 0.92rem;
+}
+
+/* Algarismos de largura fixa: valores não "dançam" ao atualizar */
+.coi-kpi-value, .coi-val, .coi-tap-value, .coi-clock, .num, .coi-table td.num {
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Barra superior ---------- */
+.coi-navbar {
+    background: var(--coi-surface);
+    border-bottom: 1px solid var(--coi-border);
+    position: sticky;
+    top: 0;
+    z-index: 1020;
+}
+.coi-brand { display: flex; align-items: center; gap: .65rem; }
+.coi-brand-mark {
+    width: 10px; height: 34px; border-radius: 2px;
+    background: linear-gradient(180deg, var(--coi-ok) 0 33%, var(--coi-warn) 33% 66%, var(--coi-crit) 66% 100%);
+}
+.coi-brand-title { font-weight: 700; letter-spacing: .02em; font-size: 1.02rem; }
+.coi-brand-sub { color: var(--coi-text-muted); font-size: .75rem; }
+.coi-select {
+    width: auto;            /* .form-select do Bootstrap vem com 100% */
+    min-width: 220px;
+    background-color: var(--coi-surface-2);
+    border-color: var(--coi-border);
+    color: var(--coi-text);
+}
+.coi-clock {
+    font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: 1.05rem;
+    color: var(--coi-text);
+}
+.coi-badge-demo {
+    background: transparent;
+    border: 1px solid var(--coi-warn);
+    color: var(--coi-warn);
+    font-weight: 600;
+    letter-spacing: .05em;
+}
+
+/* Ícone do botão de tema */
+[data-bs-theme="dark"] .tema-icone-claro,
+[data-bs-theme="light"] .tema-icone-escuro { display: none; }
+
+/* ---------- Cartões ---------- */
+.coi-card {
+    background: var(--coi-surface);
+    border: 1px solid var(--coi-border);
+    border-radius: 8px;
+    color: var(--coi-text);
+}
+.coi-card-header {
+    background: transparent;
+    border-bottom: 1px solid var(--coi-border);
+    font-weight: 600;
+    font-size: .8rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--coi-text-muted);
+}
+.coi-label {
+    font-size: .74rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--coi-text-muted);
+}
+.coi-val { font-weight: 700; }
+.coi-hint { font-size: .76rem; color: var(--coi-text-muted); }
+
+/* ---------- Bloco do equipamento ---------- */
+.coi-equip {
+    background: var(--coi-surface-2);
+    border: 1px solid var(--coi-border);
+    border-left: 3px solid var(--coi-accent);
+    border-radius: 6px;
+    padding: .65rem .75rem;
+}
+.coi-equip-tipo { font-size: .7rem; font-weight: 700; color: var(--coi-accent); letter-spacing: .08em; }
+.coi-equip-desc { font-size: .82rem; margin: .1rem 0 .5rem; }
+.coi-equip-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .4rem; }
+.coi-equip-grid span { display: block; font-size: .68rem; color: var(--coi-text-muted); }
+.coi-equip-grid strong { font-size: .95rem; }
+
+/* ---------- Controle de tap ---------- */
+.coi-tap-control {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--coi-surface-2);
+    border: 1px solid var(--coi-border);
+    border-radius: 6px;
+    padding: .3rem;
+    margin: .25rem 0 .4rem;
+}
+.coi-tap-value { font-size: 2rem; font-weight: 800; line-height: 1; }
+.coi-tap-value.alterado { color: var(--coi-warn); }
+.coi-tap-delta { font-size: .78rem; font-weight: 700; color: var(--coi-text-muted); }
+.coi-btn-step {
+    width: 44px; height: 40px;
+    font-size: 1.3rem; font-weight: 700;
+    color: var(--coi-text);
+    background: var(--coi-surface);
+    border: 1px solid var(--coi-border);
+}
+.coi-btn-step:hover { border-color: var(--coi-accent); color: var(--coi-accent); }
+
+/* ---------- Botões ---------- */
+.coi-btn-main { font-weight: 700; padding: .55rem; }
+.coi-btn-outline {
+    border: 1px solid var(--coi-accent); color: var(--coi-accent); font-weight: 600; background: transparent;
+}
+.coi-btn-outline:hover { background: var(--coi-accent); color: #fff; }
+.coi-btn-warn {
+    border: 1px solid var(--coi-warn); color: var(--coi-warn); font-weight: 600; background: transparent;
+}
+.coi-btn-warn:hover { background: var(--coi-warn); color: #111; }
+.coi-btn-ghost {
+    border: 1px solid var(--coi-border); color: var(--coi-text); background: var(--coi-surface-2);
+}
+.coi-btn-ghost:hover, .coi-btn-ghost.active { border-color: var(--coi-accent); color: var(--coi-accent); }
+
+/* ---------- KPIs ---------- */
+.coi-kpi {
+    background: var(--coi-surface);
+    border: 1px solid var(--coi-border);
+    border-top: 3px solid var(--coi-border);
+    border-radius: 8px;
+    padding: .6rem .8rem;
+    height: 100%;
+}
+.coi-kpi-label { font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--coi-text-muted); }
+.coi-kpi-value { font-size: 1.7rem; font-weight: 800; line-height: 1.15; margin-top: .15rem; }
+.coi-kpi-value small { font-size: .85rem; font-weight: 600; color: var(--coi-text-muted); margin-left: .2rem; }
+.coi-kpi-sub { font-size: .74rem; color: var(--coi-text-muted); }
+.coi-kpi.ok   { border-top-color: var(--coi-ok); }
+.coi-kpi.warn { border-top-color: var(--coi-warn); }
+.coi-kpi.crit { border-top-color: var(--coi-crit); }
+.coi-kpi.crit .coi-kpi-value { color: var(--coi-crit); }
+.coi-kpi.warn .coi-kpi-value { color: var(--coi-warn); }
+.delta-bom  { color: var(--coi-ok); font-weight: 700; }
+.delta-ruim { color: var(--coi-crit); font-weight: 700; }
+
+/* ---------- Abas ---------- */
+.coi-tabs { display: flex; flex-wrap: wrap; border: 0; }
+.coi-tabs .nav-link {
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    color: var(--coi-text-muted);
+    font-size: .8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    padding: .7rem 1rem;
+    background: transparent;
+}
+.coi-tabs .nav-link:hover { color: var(--coi-text); }
+.coi-tabs .nav-link.active { color: var(--coi-accent); border-bottom-color: var(--coi-accent); }
+.coi-aba { display: none; }
+.coi-aba.active { display: block; }
+
+/* ---------- Gráficos ---------- */
+.coi-chart-box { position: relative; height: 360px; }
+.coi-chart-sm { height: 300px; }
+.coi-legend { display: flex; flex-wrap: wrap; gap: 1rem; font-size: .76rem; color: var(--coi-text-muted); }
+.coi-legend .lg { display: inline-block; width: 18px; height: 10px; margin-right: .35rem; vertical-align: middle; border-radius: 2px; }
+.lg-base { border-top: 2px dashed var(--coi-base-line); height: 0 !important; }
+.lg-sim  { background: var(--coi-accent); height: 3px !important; }
+.lg-adeq { background: var(--coi-band-adeq); border: 1px solid var(--coi-ok); }
+.lg-prec { background: var(--coi-band-prec); border: 1px solid var(--coi-warn); }
+
+/* ---------- Tabelas ---------- */
+.coi-table-wrap { max-height: 420px; overflow-y: auto; }
+.coi-table {
+    --bs-table-bg: transparent;
+    --bs-table-color: var(--coi-text);
+    margin-bottom: 0;
+    font-size: .84rem;
+}
+.coi-table thead th {
+    position: sticky; top: 0;
+    background: var(--coi-surface);
+    color: var(--coi-text-muted);
+    font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+    border-bottom: 1px solid var(--coi-border);
+    white-space: nowrap;
+}
+.coi-table td { border-color: var(--coi-border); vertical-align: middle; }
+.coi-table .num { text-align: right; }
+.coi-table tr.linha-melhor td { background: var(--coi-band-adeq); }
+.coi-table tr.linha-melhor td:first-child { box-shadow: inset 3px 0 0 var(--coi-ok); }
+.coi-table tr.linha-atual td:first-child { box-shadow: inset 3px 0 0 var(--coi-accent); }
+
+/* ---------- Status / pílulas ---------- */
+.coi-pill {
+    display: inline-block;
+    padding: .12rem .55rem;
+    border-radius: 999px;
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    border: 1px solid currentColor;
+    text-transform: uppercase;
+}
+.pill-ok   { color: var(--coi-ok); }
+.pill-warn { color: var(--coi-warn); }
+.pill-crit { color: var(--coi-crit); }
+.pill-rev  { color: var(--coi-reverse); }
+.pill-info { color: var(--coi-accent); }
+
+/* ---------- Diagnóstico ---------- */
+.coi-alerts { display: flex; flex-direction: column; gap: .5rem; max-height: 470px; overflow-y: auto; }
+.coi-alert {
+    border: 1px solid var(--coi-border);
+    border-left: 4px solid var(--coi-accent);
+    background: var(--coi-surface-2);
+    border-radius: 6px;
+    padding: .5rem .65rem;
+    font-size: .82rem;
+}
+.coi-alert strong { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; margin-bottom: .1rem; }
+.coi-alert.ok   { border-left-color: var(--coi-ok); }
+.coi-alert.ok strong { color: var(--coi-ok); }
+.coi-alert.warn { border-left-color: var(--coi-warn); }
+.coi-alert.warn strong { color: var(--coi-warn); }
+.coi-alert.crit { border-left-color: var(--coi-crit); }
+.coi-alert.crit strong { color: var(--coi-crit); }
+.coi-alert.info strong { color: var(--coi-accent); }
+
+/* ---------- Modal / resumo da manobra ---------- */
+.modal-content.coi-card .modal-header,
+.modal-content.coi-card .modal-footer { border-color: var(--coi-border); }
+.coi-manobra-resumo {
+    background: var(--coi-surface-2);
+    border: 1px solid var(--coi-border);
+    border-radius: 6px;
+    padding: .6rem .75rem;
+    font-size: .85rem;
+}
+.coi-manobra-resumo .grande { font-size: 1.4rem; font-weight: 800; }
+
+/* ---------- Toast ---------- */
+.coi-toast { background: var(--coi-surface-2); color: var(--coi-text); border: 1px solid var(--coi-border); }
+.coi-toast.toast-ok   { border-left: 4px solid var(--coi-ok); }
+.coi-toast.toast-erro { border-left: 4px solid var(--coi-crit); }
+.coi-toast.toast-info { border-left: 4px solid var(--coi-accent); }
+
+/* Indicador de processamento nos botões */
+.btn.carregando { opacity: .65; pointer-events: none; }
+
+/* Telas menores (tablet / notebook do plantão) */
+@media (max-width: 575.98px) {
+    .coi-select { min-width: 0; width: 100%; }
+    .coi-kpi-value { font-size: 1.35rem; }
+    .coi-chart-box { height: 280px; }
+}
+
+/* Impressão do relatório de manobra */
+@media print {
+    .coi-navbar, aside, .coi-tabs, .toast-container { display: none !important; }
+    body, .coi-card, .coi-kpi { background: #fff !important; color: #000 !important; }
+}

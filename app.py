@@ -46,6 +46,10 @@ def create_network(params, tap_pos=0):
     net.trafo.loc[0, 'tap_max'] = 2
     net.trafo.loc[0, 'tap_neutral'] = 0
     net.trafo.loc[0, 'tap_pos'] = tap_pos
+    # pandapower >= 3.0 ignora tap_pos se o tipo de comutador não for informado.
+    # Sem esta linha, todas as posições de tap dão o mesmo resultado.
+    # Convenção (tap no lado de alta): tap POSITIVO REDUZ a tensão na BT.
+    net.trafo.loc[0, 'tap_changer_type'] = 'Ratio'
     
     # 4. Linhas (Traços)
     pp.create_line(net, from_bus=b1, to_bus=b2, length_km=0.05, std_type="NAYY 4x50 SE")
@@ -213,5 +217,5 @@ def optimize_tap():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    # Roda o servidor na porta padrão do Replit (0.0.0.0 garante acesso externo)
+    # 0.0.0.0 permite acesso pela rede local; use debug=False em produção
     app.run(host='0.0.0.0', port=8080, debug=True)

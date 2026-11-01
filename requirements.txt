@@ -1,0 +1,5 @@
+flask>=2.3
+pandapower>=3.0
+pandas>=2.0
+# testes
+pytest>=7
