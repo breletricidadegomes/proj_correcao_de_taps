@@ -17,6 +17,10 @@
  *                            fator_carga, fator_gd}
  *     registrar             {... simular ..., tap_novo, operador, motivo, observacao}
  *     historico             {alimentador_id}
+ *     hospedagem            {alimentador_id, equipamento_id, no_codigo, v_fonte_pu,
+ *                            fator_carga, fator_gd, mapa (bool)}
+ *     diaria                {alimentador_id, equipamento_id, perfil_carga, perfil_ceu,
+ *                            pico_carga, pico_gd, v_fonte_pu, v_ref_pu, banda_pu}
  *
  *  Resposta: {"ok": true, "dados": {...}}  ou  {"ok": false, "erro": "..."}
  * =============================================================================
@@ -316,6 +320,61 @@ try {
                 }
             );
             responder(true, array('registro' => $registro, 'mensagem' => 'Manobra registrada com sucesso.'));
+            break;
+
+        // ---------------------------------------------------------------------
+        case 'hospedagem':
+            @set_time_limit(120); // busca com centenas de fluxos de carga
+            $ctx = carregar_contexto($repo, $in, true);
+            $p = ler_parametros($in);
+            $noCodigo = ler_texto($in, 'no_codigo', 30, true);
+            $existe = false;
+            foreach ($ctx['nos'] as $n) {
+                if ($n['codigo'] === $noCodigo) {
+                    $existe = true;
+                }
+            }
+            if (!$existe) {
+                throw new ErroValidacao('Nó não pertence ao alimentador selecionado.');
+            }
+            $cfgHosp = app_config('hospedagem');
+            if (!is_array($cfgHosp)) {
+                $cfgHosp = array(); // config.php antigo: usa os padrões da classe
+            }
+            $analise = new AnaliseHospedagem($sim, $cfgHosp);
+            $resp = $analise->avaliarNo($ctx['alimentador'], $ctx['nos'], $ctx['equipamentos'], $p,
+                                        $ctx['equipamento'], $noCodigo);
+            if (!empty($in['mapa'])) {
+                $limite = isset($cfgHosp['limite_nos_mapa']) ? (int) $cfgHosp['limite_nos_mapa'] : 60;
+                $resp['mapa'] = $analise->mapa($ctx['alimentador'], $ctx['nos'], $ctx['equipamentos'], $p,
+                                               $ctx['equipamento'], $limite);
+            }
+            responder(true, $resp);
+            break;
+
+        // ---------------------------------------------------------------------
+        case 'diaria':
+            @set_time_limit(120);
+            $ctx = carregar_contexto($repo, $in, true);
+            $perfisCarga = CurvasTipicas::perfisCarga();
+            $perfisCeu = CurvasTipicas::perfisCeu();
+            $perfilCarga = ler_texto($in, 'perfil_carga', 20, true);
+            $perfilCeu = ler_texto($in, 'perfil_ceu', 20, true);
+            if (!isset($perfisCarga[$perfilCarga]) || !isset($perfisCeu[$perfilCeu])) {
+                throw new ErroValidacao('Perfil de carga ou de céu inválido.');
+            }
+            $opcoes = array(
+                'perfil_carga' => $perfilCarga,
+                'perfil_ceu'   => $perfilCeu,
+                'pico_carga'   => ler_numero($in, 'pico_carga', 0.0, 1.5, 1.0),
+                'pico_gd'      => ler_numero($in, 'pico_gd', 0.0, 1.5, 1.0),
+                'v_fonte_pu'   => ler_numero($in, 'v_fonte_pu', 0.85, 1.15, 1.0),
+                'v_ref_pu'     => ler_numero($in, 'v_ref_pu', 0.95, 1.05, 1.01),
+                'banda_pu'     => ler_numero($in, 'banda_pu', 0.005, 0.05, 0.02),
+            );
+            $diaria = new SimulacaoDiaria($sim);
+            responder(true, $diaria->executar($ctx['alimentador'], $ctx['nos'], $ctx['equipamentos'],
+                                              $ctx['equipamento'], $opcoes));
             break;
 
         // ---------------------------------------------------------------------

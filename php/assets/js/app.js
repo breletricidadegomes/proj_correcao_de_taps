@@ -20,6 +20,12 @@
         ultimaOtim: null,
         graficoPerfil: null,
         graficoOtim: null,
+        ultimaHosp: null,
+        ultimaDiaria: null,
+        graficoHosp: null,
+        graficoDiaTensao: null,
+        graficoDiaPerfil: null,
+        estrategiaDia: 'automatico',
         timerSim: null,
         reqSeq: 0
     };
@@ -133,6 +139,7 @@
             if (alvo) { sel.value = alvo; }
             selecionarEquipamento(parseInt(sel.value, 10));
             limparOtimizacao();
+            limparEstudos();
             carregarHistorico();
             simular();
         }).catch(function (e) { toast(e.message, 'erro'); });
@@ -192,6 +199,7 @@
             renderizarTabelaNos(d);
             renderizarTabelaTrechos(d);
             renderizarDiagnostico(d);
+            preencherNosHospedagem(d);
         }).catch(function (e) {
             if (seq === estado.reqSeq) { toast(e.message, 'erro'); }
         }).then(function () { carregando(btn, false); });
@@ -631,6 +639,348 @@
     }
 
     // -------------------------------------------------------------------------
+    // Capacidade de hospedagem de GD
+    // -------------------------------------------------------------------------
+
+    /** Linhas verticais com rótulo (marcam as capacidades no gráfico) */
+    var pluginMarcadores = {
+        id: 'marcadores',
+        afterDatasetsDraw: function (chart, args, opts) {
+            if (!opts || !opts.linhas) { return; }
+            var x = chart.scales.x, area = chart.chartArea, ctx = chart.ctx;
+            ctx.save();
+            opts.linhas.forEach(function (l, i) {
+                if (l.x === null || l.x === undefined || l.x < x.min || l.x > x.max) { return; }
+                var px = x.getPixelForValue(l.x);
+                ctx.strokeStyle = l.cor;
+                ctx.setLineDash([4, 3]);
+                ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(px, area.top); ctx.lineTo(px, area.bottom); ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = l.cor;
+                ctx.font = '600 11px system-ui, sans-serif';
+                var texto = l.rotulo;
+                var largura = ctx.measureText(texto).width;
+                var tx = px + 4 + largura > area.right ? px - 4 - largura : px + 4;
+                ctx.fillText(texto, tx, area.top + 12 + i * 14);
+            });
+            ctx.restore();
+        }
+    };
+
+    function limparEstudos() {
+        estado.ultimaHosp = null;
+        estado.ultimaDiaria = null;
+        if (estado.graficoHosp) { estado.graficoHosp.destroy(); estado.graficoHosp = null; }
+        if (estado.graficoDiaTensao) { estado.graficoDiaTensao.destroy(); estado.graficoDiaTensao = null; }
+        if (estado.graficoDiaPerfil) { estado.graficoDiaPerfil.destroy(); estado.graficoDiaPerfil = null; }
+        $('hosp-resultado').hidden = true;
+        $('hosp-vazio').hidden = false;
+        $('dia-resultado').hidden = true;
+        $('dia-vazio').hidden = false;
+    }
+
+    /** Preenche a lista de nós da aba de hospedagem a partir da última simulação */
+    function preencherNosHospedagem(d) {
+        var sel = $('sel-no-hosp');
+        var anterior = sel.value;
+        var nos = d.simulado.nos.filter(function (n) { return n.pai !== null; });
+        var maisDistante = null;
+        sel.innerHTML = '';
+        nos.forEach(function (n) {
+            var op = document.createElement('option');
+            op.value = n.codigo;
+            op.textContent = n.codigo + ' — ' + n.nome + ' (' + fmt(n.distancia_km, 1) + ' km)';
+            sel.appendChild(op);
+            if (!maisDistante || n.distancia_km > maisDistante.distancia_km) { maisDistante = n; }
+        });
+        var existe = nos.some(function (n) { return n.codigo === anterior; });
+        if (existe) { sel.value = anterior; } else if (maisDistante) { sel.value = maisDistante.codigo; }
+    }
+
+    function calcularHospedagem() {
+        if (!estado.equipamento || !$('sel-no-hosp').value) { return; }
+        var btn = $('btn-hospedagem');
+        var p = parametros();
+        p.no_codigo = $('sel-no-hosp').value;
+        p.mapa = $('chk-mapa').checked;
+        carregando(btn, true);
+        api('hospedagem', p).then(function (d) {
+            estado.ultimaHosp = d;
+            renderizarHospedagem(d);
+            toast('Capacidade calculada (' + d.avaliacoes + ' fluxos de carga' +
+                (d.mapa ? ' + ' + d.mapa.avaliacoes + ' no mapa' : '') + ').', 'ok');
+        }).catch(function (e) { toast(e.message, 'erro'); })
+          .then(function () { carregando(btn, false); });
+    }
+
+    function textoKw(r) {
+        if (r.acima_maximo) { return '≥ ' + fmt(r.kw, 0); }
+        return fmt(r.kw, 0);
+    }
+
+    function renderizarHospedagem(d) {
+        $('hosp-vazio').hidden = true;
+        $('hosp-resultado').hidden = false;
+
+        var f = d.tap_atual_kw, m = d.melhor_tap_kw, fr = d.fluxo_reverso;
+
+        if (f.base_viola) {
+            setKpi('hosp-kpi-fixo', '0<small>kW</small>', 'O cenário atual já viola: ' + esc(f.limitante), 'crit');
+        } else {
+            setKpi('hosp-kpi-fixo', esc(textoKw(f)) + '<small>kW</small>',
+                f.acima_maximo ? 'sem violação até o teto da busca' : 'limitado por: ' + esc(f.limitante),
+                f.kw > 0 ? 'ok' : 'warn');
+        }
+
+        if (m.base_viola) {
+            setKpi('hosp-kpi-melhor', '0<small>kW</small>', 'Nenhuma posição de ' + esc(d.equipamento) + ' resolve o cenário atual: ' + esc(m.limitante), 'crit');
+        } else {
+            var manobra = m.tap === d.tap_atual ? 'sem manobra' :
+                'tap ' + fmtTap(d.tap_atual) + ' → ' + fmtTap(m.tap) + ' em ' + d.equipamento;
+            var ganho = m.kw - f.kw;
+            setKpi('hosp-kpi-melhor', esc(textoKw(m)) + '<small>kW</small>',
+                esc(manobra) + (ganho > 0 ? ' · <span class="delta-bom">+' + esc(fmt(ganho, 0)) + ' kW</span>' : '') +
+                (m.limitante ? '<br>limitado por: ' + esc(m.limitante) : ''),
+                m.kw > 0 ? 'ok' : 'warn');
+        }
+
+        if (!fr) {
+            setKpi('hosp-kpi-reverso', '—', 'não calculado', '');
+        } else if (fr.ja_reverso) {
+            setKpi('hosp-kpi-reverso', 'Já ocorre', 'o alimentador já exporta ' + esc(fmt(-fr.p_base_kw, 0)) + ' kW pelo ' + esc(fr.onde), 'warn');
+        } else if (fr.kw === null) {
+            setKpi('hosp-kpi-reverso', '—', 'não ocorre até o teto da busca', 'ok');
+        } else {
+            setKpi('hosp-kpi-reverso', esc(fmt(fr.kw, 0)) + '<small>kW</small>', 'a partir deste valor, no ' + esc(fr.onde), '');
+        }
+
+        renderizarGraficoHosp(d);
+        renderizarMapaHosp(d);
+    }
+
+    function renderizarGraficoHosp(d) {
+        var lim = estado.ultimaSim ? estado.ultimaSim.simulado.limites_pu : [0.90, 0.93, 1.05, 1.05];
+        var corGrade = cssVar('--coi-grid'), corTexto = cssVar('--coi-text-muted');
+        var corBase = cssVar('--coi-base-line'), corAcc = cssVar('--coi-accent');
+        var pts = d.curva;
+        var todos = [];
+        pts.forEach(function (p) {
+            if (p.v_max_tap_atual !== null) { todos.push(p.v_max_tap_atual); }
+            if (p.v_max_melhor_tap !== null) { todos.push(p.v_max_melhor_tap); }
+        });
+        var yMin = Math.floor(Math.min(0.98, Math.min.apply(null, todos) - 0.01) / 0.02) * 0.02;
+        var yMax = Math.ceil(Math.max(1.08, Math.max.apply(null, todos) + 0.01) / 0.02) * 0.02;
+
+        var linhas = [];
+        if (!d.tap_atual_kw.base_viola) { linhas.push({ x: d.tap_atual_kw.kw, cor: corBase, rotulo: 'tap atual: ' + fmt(d.tap_atual_kw.kw, 0) + ' kW' }); }
+        if (!d.melhor_tap_kw.base_viola) { linhas.push({ x: d.melhor_tap_kw.kw, cor: corAcc, rotulo: 'ajustando: ' + fmt(d.melhor_tap_kw.kw, 0) + ' kW' }); }
+        if (d.fluxo_reverso && d.fluxo_reverso.kw) { linhas.push({ x: d.fluxo_reverso.kw, cor: cssVar('--coi-reverse'), rotulo: 'fluxo reverso' }); }
+
+        var cfg = {
+            type: 'scatter',
+            data: {
+                datasets: [
+                    { label: 'V máx com tap atual', data: pts.map(function (p) { return { x: p.kw, y: p.v_max_tap_atual }; }),
+                      showLine: true, borderColor: corBase, borderDash: [6, 4], borderWidth: 2, pointRadius: 2, pointBackgroundColor: corBase },
+                    { label: 'V máx com o tap recomendado', data: pts.map(function (p) { return { x: p.kw, y: p.v_max_melhor_tap, tap: p.tap_melhor }; }),
+                      showLine: true, borderColor: corAcc, borderWidth: 2.5, pointRadius: 3, pointBackgroundColor: corAcc }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+                plugins: {
+                    legend: { labels: { color: corTexto, boxWidth: 12 } },
+                    faixasProdist: { limites: lim },
+                    marcadores: { linhas: linhas },
+                    tooltip: { callbacks: { label: function (ctx) {
+                        var t = ctx.raw.tap !== undefined && ctx.raw.tap !== null ? ' (tap ' + fmtTap(ctx.raw.tap) + ')' : '';
+                        return ctx.dataset.label + ': ' + fmt(ctx.raw.y, 3) + ' p.u.' + t + ' com ' + fmt(ctx.raw.x, 0) + ' kW';
+                    } } }
+                },
+                scales: {
+                    x: { type: 'linear', min: 0, title: { display: true, text: 'GD adicional no nó ' + d.no + ' (kW)', color: corTexto },
+                         grid: { color: corGrade }, ticks: { color: corTexto, callback: function (v) { return fmt(v, 0); } } },
+                    y: { min: yMin, max: yMax, title: { display: true, text: 'Maior tensão da rede (p.u.)', color: corTexto },
+                         grid: { color: corGrade }, ticks: { color: corTexto, stepSize: 0.02, callback: function (v) { return fmt(v, 2); } } }
+                }
+            },
+            plugins: [pluginFaixas, pluginMarcadores]
+        };
+        if (estado.graficoHosp) { estado.graficoHosp.destroy(); }
+        estado.graficoHosp = new Chart($('chart-hosp'), cfg);
+    }
+
+    function renderizarMapaHosp(d) {
+        var wrap = $('hosp-mapa-wrap');
+        if (!d.mapa) { wrap.hidden = true; return; }
+        wrap.hidden = false;
+        var maxKw = 1;
+        d.mapa.nos.forEach(function (l) { maxKw = Math.max(maxKw, l.kw_melhor_tap, l.kw_tap_atual); });
+        var html = d.mapa.nos.map(function (l) {
+            var wF = Math.max(0, l.kw_tap_atual / maxKw * 100), wM = Math.max(0, l.kw_melhor_tap / maxKw * 100);
+            var tapTxt = l.tap_necessario === null || l.tap_necessario === undefined ? '—' : fmtTap(l.tap_necessario);
+            return '<tr class="' + (l.codigo === d.no ? 'linha-selecionada' : '') + '">' +
+                '<td><strong>' + esc(l.codigo) + '</strong></td>' +
+                '<td>' + esc(l.nome) + '</td>' +
+                '<td class="num">' + esc(fmt(l.distancia_km, 1)) + '</td>' +
+                '<td><div class="hosp-barras">' +
+                  '<div class="hosp-barra fixo" title="Com o tap atual"><div class="trilho"><div class="preench" style="width:' + wF.toFixed(1) + '%"></div></div><span>' + esc(fmt(l.kw_tap_atual, 0)) + '</span></div>' +
+                  '<div class="hosp-barra melhor" title="Ajustando o tap"><div class="trilho"><div class="preench" style="width:' + wM.toFixed(1) + '%"></div></div><span>' + esc((l.acima_maximo ? '≥ ' : '') + fmt(l.kw_melhor_tap, 0)) + '</span></div>' +
+                '</div></td>' +
+                '<td class="num">' + esc(tapTxt) + '</td>' +
+                '<td class="coi-hint coi-col-limitante">' + esc(l.limitante || 'sem violação até o teto') + '</td></tr>';
+        }).join('');
+        if (d.mapa.truncado) {
+            html += '<tr><td colspan="6" class="coi-hint">Mapa limitado aos primeiros nós (ajuste "limite_nos_mapa" em config.php).</td></tr>';
+        }
+        $('tbl-hosp-mapa').querySelector('tbody').innerHTML = html;
+    }
+
+    // -------------------------------------------------------------------------
+    // Simulação de 24 horas
+    // -------------------------------------------------------------------------
+    var NOME_ESTRATEGIA = { fixo: 'Tap fixo', automatico: 'Relé automático', otimo: 'Tap ótimo (referência)' };
+
+    function calcularDiaria() {
+        if (!estado.equipamento) { return; }
+        var btn = $('btn-diaria');
+        var corpo = {
+            alimentador_id: estado.alimentadorId,
+            equipamento_id: estado.equipamento.id,
+            perfil_carga: $('sel-perfil-carga').value,
+            perfil_ceu: $('sel-perfil-ceu').value,
+            pico_carga: parseFloat($('num-pico-carga').value) / 100,
+            pico_gd: parseFloat($('num-pico-gd').value) / 100,
+            v_fonte_pu: parseFloat($('rng-vfonte').value),
+            v_ref_pu: parseFloat($('num-vref').value),
+            banda_pu: parseFloat($('num-banda').value) / 100
+        };
+        carregando(btn, true);
+        api('diaria', corpo).then(function (d) {
+            estado.ultimaDiaria = d;
+            renderizarDiaria(d);
+            toast('Simulação de 24 h concluída.', 'ok');
+        }).catch(function (e) { toast(e.message, 'erro'); })
+          .then(function () { carregando(btn, false); });
+    }
+
+    function renderizarDiaria(d) {
+        $('dia-vazio').hidden = true;
+        $('dia-resultado').hidden = false;
+        var lim = estado.ultimaSim ? estado.ultimaSim.simulado.limites_pu : [0.90, 0.93, 1.05, 1.05];
+
+        $('tbl-dia-resumo').querySelector('tbody').innerHTML = ['fixo', 'automatico', 'otimo'].map(function (k) {
+            var r = d.resumo[k];
+            var clsV = r.intervalos_violacao === 0 ? 'pill-ok' : (r.violacao_percent > 10 ? 'pill-crit' : 'pill-warn');
+            var clsMax = r.v_max_dia > lim[2] ? 'delta-ruim' : '';
+            var clsMin = r.v_min_dia < lim[1] ? 'delta-ruim' : '';
+            return '<tr><td><strong>' + esc(NOME_ESTRATEGIA[k]) + '</strong></td>' +
+                '<td class="num">' + esc(r.comutacoes) + '</td>' +
+                '<td class="num"><span class="coi-pill ' + clsV + '">' + esc(fmt(r.violacao_percent, 1)) + '%</span></td>' +
+                '<td class="num">' + esc(fmt(r.drp_diario, 2)) + '%</td>' +
+                '<td class="num">' + esc(fmt(r.drc_diario, 2)) + '%</td>' +
+                '<td class="num"><span class="' + clsMax + '">' + esc(fmt(r.v_max_dia, 3)) + '</span> <span class="coi-hint">' + esc(r.hora_v_max || '') + '</span></td>' +
+                '<td class="num"><span class="' + clsMin + '">' + esc(fmt(r.v_min_dia, 3)) + '</span> <span class="coi-hint">' + esc(r.hora_v_min || '') + '</span></td>' +
+                '<td class="num">' + esc(fmt(r.perdas_kwh, 0)) + '</td></tr>';
+        }).join('');
+
+        renderizarGraficoDiaTensao(d);
+        renderizarGraficoDiaPerfil(d);
+    }
+
+    function renderizarGraficoDiaTensao(d) {
+        var k = estado.estrategiaDia;
+        var serie = d.series[k];
+        var lim = estado.ultimaSim ? estado.ultimaSim.simulado.limites_pu : [0.90, 0.93, 1.05, 1.05];
+        var corGrade = cssVar('--coi-grid'), corTexto = cssVar('--coi-text-muted');
+        var labels = d.perfil.map(function (p) { return p.hora; });
+        var vmax = serie.map(function (r) { return r.convergiu ? r.v_max_pu : null; });
+        var vmin = serie.map(function (r) { return r.convergiu ? r.v_min_pu : null; });
+        var todos = vmax.concat(vmin).filter(function (v) { return v !== null; });
+        var yMin = Math.floor(Math.min(0.88, Math.min.apply(null, todos) - 0.01) / 0.02) * 0.02;
+        var yMax = Math.ceil(Math.max(1.06, Math.max.apply(null, todos) + 0.01) / 0.02) * 0.02;
+
+        var cfg = {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'V máx', data: vmax, borderColor: cssVar('--coi-crit'), borderWidth: 2, pointRadius: 0, tension: 0.2, yAxisID: 'y' },
+                    { label: 'V mín', data: vmin, borderColor: cssVar('--coi-accent'), borderWidth: 2, pointRadius: 0, tension: 0.2, yAxisID: 'y' },
+                    { label: 'Tap (' + d.equipamento + ')', data: serie.map(function (r) { return r.tap; }), borderColor: cssVar('--coi-text-muted'),
+                      borderWidth: 1.5, borderDash: [3, 3], pointRadius: 0, stepped: true, yAxisID: 'yTap' }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { labels: { color: corTexto, boxWidth: 12 } },
+                    faixasProdist: { limites: lim },
+                    tooltip: { callbacks: { afterBody: function (itens) {
+                        var r = serie[itens[0].dataIndex];
+                        if (!r.convergiu) { return 'Fluxo não convergiu'; }
+                        return ['V máx em ' + r.no_v_max + ', V mín em ' + r.no_v_min,
+                                'Nós fora da faixa: ' + r.nos_fora + (r.fluxo_reverso ? ' · fluxo reverso' : '')];
+                    } } }
+                },
+                scales: {
+                    x: { grid: { color: corGrade }, ticks: { color: corTexto, maxTicksLimit: 13, autoSkip: true } },
+                    y: { min: yMin, max: yMax, position: 'left', title: { display: true, text: 'Tensão (p.u.)', color: corTexto },
+                         grid: { color: corGrade }, ticks: { color: corTexto, stepSize: 0.02, callback: function (v) { return fmt(v, 2); } } },
+                    yTap: { position: 'right', title: { display: true, text: 'Posição de tap', color: corTexto },
+                            grid: { drawOnChartArea: false }, ticks: { color: corTexto, stepSize: 1, precision: 0 },
+                            suggestedMin: estado.equipamento ? estado.equipamento.tap_min : undefined,
+                            suggestedMax: estado.equipamento ? estado.equipamento.tap_max : undefined }
+                }
+            },
+            plugins: [pluginFaixas]
+        };
+        if (estado.graficoDiaTensao) { estado.graficoDiaTensao.destroy(); }
+        estado.graficoDiaTensao = new Chart($('chart-dia-tensao'), cfg);
+    }
+
+    function renderizarGraficoDiaPerfil(d) {
+        var corGrade = cssVar('--coi-grid'), corTexto = cssVar('--coi-text-muted');
+        var corCarga = cssVar('--coi-accent'), corGd = cssVar('--coi-warn');
+        var cfg = {
+            type: 'line',
+            data: {
+                labels: d.perfil.map(function (p) { return p.hora; }),
+                datasets: [
+                    { label: 'Carga do alimentador (MW)', data: d.perfil.map(function (p) { return p.carga_mw; }),
+                      borderColor: corCarga, borderWidth: 2, pointRadius: 0, tension: 0.2 },
+                    { label: 'Geração distribuída (MW)', data: d.perfil.map(function (p) { return p.gd_mw; }),
+                      borderColor: corGd, borderWidth: 2, pointRadius: 0, tension: 0.2 },
+                    { label: 'Carga líquida (MW)', data: d.perfil.map(function (p) { return Math.round((p.carga_mw - p.gd_mw) * 1000) / 1000; }),
+                      borderColor: cssVar('--coi-text-muted'), borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, tension: 0.2 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+                interaction: { mode: 'index', intersect: false },
+                plugins: { legend: { labels: { color: corTexto, boxWidth: 12 } } },
+                scales: {
+                    x: { grid: { color: corGrade }, ticks: { color: corTexto, maxTicksLimit: 13 } },
+                    y: { title: { display: true, text: 'MW', color: corTexto }, grid: { color: corGrade },
+                         ticks: { color: corTexto, callback: function (v) { return fmt(v, 1); } } }
+                }
+            }
+        };
+        if (estado.graficoDiaPerfil) { estado.graficoDiaPerfil.destroy(); }
+        estado.graficoDiaPerfil = new Chart($('chart-dia-perfil'), cfg);
+    }
+
+    function selecionarEstrategiaDia(k) {
+        estado.estrategiaDia = k;
+        Array.prototype.forEach.call(document.querySelectorAll('[data-estrategia]'), function (b) {
+            b.classList.toggle('active', b.getAttribute('data-estrategia') === k);
+        });
+        if (estado.ultimaDiaria) { renderizarGraficoDiaTensao(estado.ultimaDiaria); }
+    }
+
+    // -------------------------------------------------------------------------
     // Abas, tema, relógio
     // -------------------------------------------------------------------------
     function mostrarAba(nome) {
@@ -640,6 +990,11 @@
         // Chart.js precisa redimensionar quando o canvas fica visível
         if (nome === 'perfil' && estado.graficoPerfil) { estado.graficoPerfil.resize(); }
         if (nome === 'otimizacao' && estado.graficoOtim) { estado.graficoOtim.resize(); }
+        if (nome === 'hospedagem' && estado.graficoHosp) { estado.graficoHosp.resize(); }
+        if (nome === 'diaria') {
+            if (estado.graficoDiaTensao) { estado.graficoDiaTensao.resize(); }
+            if (estado.graficoDiaPerfil) { estado.graficoDiaPerfil.resize(); }
+        }
     }
 
     function alternarTema() {
@@ -650,6 +1005,8 @@
         // Recria os gráficos com as cores do novo tema
         if (estado.ultimaSim) { renderizarPerfil(estado.ultimaSim); }
         if (estado.ultimaOtim) { renderizarGraficoOtim(estado.ultimaOtim); }
+        if (estado.ultimaHosp) { renderizarGraficoHosp(estado.ultimaHosp); }
+        if (estado.ultimaDiaria) { renderizarGraficoDiaTensao(estado.ultimaDiaria); renderizarGraficoDiaPerfil(estado.ultimaDiaria); }
     }
 
     function relogio() {
@@ -664,6 +1021,7 @@
         $('sel-equipamento').addEventListener('change', function () {
             selecionarEquipamento(parseInt(this.value, 10));
             limparOtimizacao();
+            limparEstudos();
             simular();
         });
 
@@ -699,6 +1057,11 @@
         $('btn-registrar').addEventListener('click', abrirRegistro);
         $('form-registrar').addEventListener('submit', confirmarRegistro);
         $('btn-tema').addEventListener('click', alternarTema);
+        $('btn-hospedagem').addEventListener('click', calcularHospedagem);
+        $('btn-diaria').addEventListener('click', calcularDiaria);
+        Array.prototype.forEach.call(document.querySelectorAll('[data-estrategia]'), function (b) {
+            b.addEventListener('click', function () { selecionarEstrategiaDia(this.getAttribute('data-estrategia')); });
+        });
 
         Array.prototype.forEach.call(document.querySelectorAll('.coi-tabs .nav-link'), function (b) {
             b.addEventListener('click', function () {

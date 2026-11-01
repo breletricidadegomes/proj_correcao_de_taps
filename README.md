@@ -13,6 +13,7 @@ O repositório tem duas versões:
 | Regulação | Tap do trafo de distribuição (−2 a +2 × 2,5%) | OLTC da subestação + reguladores de linha |
 | Motor | pandapower (Newton-Raphson) | Fluxo de carga radial próprio em PHP, validado contra o pandapower |
 | Indicadores | Subtensão/sobretensão (0,93–1,05 p.u.) | Faixas adequada/precária/crítica, DRP/DRC/ICC estimados por UC, perdas |
+| Estudos de GD | Fluxo reverso e sobretensão no cenário atual | Capacidade de hospedagem por nó e simulação de 24 h com comutações |
 | Persistência | Nenhuma | MySQL ou PostgreSQL, histórico auditável de manobras |
 | Servidor | Python 3 + Flask | PHP 5.5+ (servidores legados), sem dependências externas |
 
@@ -81,9 +82,21 @@ distribuidora em servidores PHP legados.
 - Painel com modo escuro, perfil de tensão (tap atual × proposto), tabelas de nós e trechos.
 - Otimização de tap ponderada por número de consumidores e por desgaste do comutador.
 - Registro de manobra com operador, motivo e indicadores antes/depois recalculados no servidor.
+- **Capacidade de hospedagem de GD**: quantos kW cada nó aceita com o tap atual e ajustando o tap, o fator que limita (sobretensão, cabo, trafo) e a partir de quanto aparece fluxo reverso.
+- **Simulação de 24 h**: compara tap fixo, relé automático e tap ótimo em 96 intervalos, com comutações do dia, DRP/DRC diários e perdas.
 - Funciona sem banco (modo demonstração) ou com MySQL/PostgreSQL.
 
-![Otimização de tap do regulador](docs/php-otimizacao.png)
+![Capacidade de hospedagem no fim do tronco do CTR-01](docs/php-hospedagem-gd.png)
+
+No fim do tronco do CTR-01, com carga leve, cabem 2.710 kW de GD com o tap atual;
+baixando o OLTC para −4, o limite sobe para 4.660 kW. Perto da SE o limite deixa de ser
+tensão e passa a ser a ampacidade do cabo.
+
+![Simulação de 24 h com nuvens passageiras no CTR-02](docs/php-curva-24h.png)
+
+No CTR-02, com a usina FV e nuvens passageiras, o relé automático do OLTC mantém a
+barra da SE na faixa, mas o fim da linha chega a 1,062 p.u. ao meio-dia. O tap ótimo
+evita a violação ao custo de 30 comutações no dia, contra 2 do relé.
 
 Instalação, modelo de cálculo e cadastro da rede: [`php/README.md`](php/README.md).
 
