@@ -1,0 +1,11 @@
+# Regulação COI (Modelo 2) - Apache
+DirectoryIndex index.php
+Options -Indexes
+
+# Bloqueia a pasta do banco, o código e as configurações para acesso direto.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(data|src|views|tests)(/|$) - [F,L]
+    RewriteRule ^config(\.local)?(\.example)?\.php$ - [F,L]
+    RewriteRule \.(md|json)$ - [F,L]
+</IfModule>

@@ -4,7 +4,14 @@ Ferramentas web para analisar o impacto da Geração Distribuída (GD) na tensã
 distribuição e escolher a posição de tap que mantém os consumidores dentro dos limites do
 **PRODIST Módulo 8**.
 
-O repositório tem duas versões:
+O repositório tem dois modelos:
+
+- **Modelo 1** — o protótipo Flask (raiz) e a versão PHP 5.5 de apoio à decisão ([`php/`](php/)), comparados abaixo.
+- **Modelo 2** ([`modelo2/`](modelo2/)) — *Regulação COI*: simulador e registrador corporativo de ajustes de
+  OLTC, reguladores e bancos de capacitores, com fluxo de proposta, aprovação e execução.
+  Roda em dois servidores (coletor Python/Snowflake + site PHP 5.5). Etapa 1: gestão de ajustes.
+
+Modelo 1 em duas versões:
 
 | | Protótipo Flask (raiz) | Versão PHP 5.5 ([`php/`](php/)) |
 |---|---|---|

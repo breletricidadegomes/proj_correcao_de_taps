@@ -4,3 +4,19 @@ __pycache__/
 venv/
 .pytest_cache/
 .env
+
+# ---- Modelo 2 ----
+# Configuração local e dados de produção nunca vão para o repositório público
+modelo2/servidor2/Regulacao_coi/config.local.php
+modelo2/servidor2/Regulacao_coi/data/*
+!modelo2/servidor2/Regulacao_coi/data/.gitkeep
+# Emblema corporativo: entregue só no pacote interno
+modelo2/servidor2/Regulacao_coi/assets/coi.png
+modelo2/servidor2/Regulacao_coi/assets/coi-64.png
+modelo2/servidor2/Regulacao_coi/assets/favicon.png
+# Coletor (servidor 1): credenciais, ambiente e saídas
+modelo2/servidor1/regulacao_coi/coletor/config.ini
+modelo2/servidor1/regulacao_coi/coletor/logs/
+modelo2/servidor1/regulacao_coi/saida/
+modelo2/servidor1/regulacao_coi/espelho/
+modelo2/servidor1/regulacao_coi/estado/

@@ -1,0 +1,79 @@
+/* Regulação COI (Modelo 2) — complementos ao estilo.css do Comunica COI */
+.st-analise{background:var(--info-soft);color:var(--info)}
+.st-devolvida{background:var(--warn-soft);color:var(--warn)}
+.st-aprovada{background:var(--violet-soft);color:var(--violet)}
+.st-executada{background:var(--accent-soft);color:var(--accent)}
+.st-reprovada{background:var(--crit-soft);color:var(--crit)}
+
+.kpis.k5{grid-template-columns:repeat(5,minmax(0,1fr))}
+.kpi-btn{cursor:pointer;text-align:left;border:0;background:transparent;font:inherit;color:inherit}
+.kpi-btn:hover{background:var(--surface-2)}
+@media (max-width:900px){.kpis.k5{grid-template-columns:repeat(2,minmax(0,1fr))}.kpis.k5 .kpi{border-bottom:1px solid var(--line-2)}}
+
+.eq-tipo{font-family:var(--f-disp);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;color:var(--ink-3)}
+.eq-vig{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-size:13px}
+.lim{color:var(--crit);font-weight:600}
+.orig{font-size:12px;color:var(--ink-3)}
+.orig b{color:var(--accent);font-weight:600}
+
+/* Proposta: cartões de equipamento */
+.eq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.eq-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.eq-card.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.eq-card header{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.eq-card header b{font-family:var(--f-disp);font-size:16px;display:block}
+.eq-card header small{color:var(--ink-2);font-size:12.5px}
+.eq-card .row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.eq-card .field input,.eq-card .field select{min-height:36px;padding:6px 9px}
+.eq-card .now{font-size:12.5px;color:var(--ink-2)}
+.eq-card fieldset{border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
+.eq-card fieldset[disabled]{opacity:.45}
+.switch{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+.switch input{width:18px;height:18px;accent-color:var(--accent)}
+
+/* Comparação antes × depois */
+.cmp{width:100%;border-collapse:collapse;font-size:13.5px}
+.cmp th,.cmp td{padding:7px 10px;border-bottom:1px solid var(--line-2);text-align:right;white-space:nowrap}
+.cmp th:first-child,.cmp td:first-child{text-align:left;white-space:normal}
+.cmp thead th{font-family:var(--f-disp);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.cmp td{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.cmp td:first-child{font-family:var(--f-body)}
+.bom{color:var(--ok);font-weight:600}
+.ruim{color:var(--crit);font-weight:600}
+.alim-res{display:flex;flex-direction:column;gap:10px}
+.alim-res h3{font-size:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* Perfil de tensão (SVG desenhado aqui, sem biblioteca) */
+.perfil{width:100%;max-width:1100px;height:auto;display:block}
+.perfil .grade{stroke:var(--line-2);stroke-width:1}
+.perfil .eixo{fill:var(--ink-3);font-size:11px;font-family:var(--f-mono)}
+.perfil .adeq{fill:var(--ok-soft)}
+.perfil .prec{fill:var(--warn-soft)}
+.perfil .antes{stroke:var(--ink-3);stroke-width:1.6;stroke-dasharray:5 4;fill:none}
+.perfil .depois{stroke:var(--accent);stroke-width:2.6;fill:none}
+.perfil .pt-ok{fill:var(--ok)} .perfil .pt-warn{fill:var(--warn)} .perfil .pt-crit{fill:var(--crit)}
+.perfil .pt{stroke:var(--surface);stroke-width:1.5}
+.legenda{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--ink-2)}
+.legenda i{display:inline-block;width:18px;height:0;border-top:2px solid var(--accent);vertical-align:middle;margin-right:5px}
+.legenda i.a{border-top:2px dashed var(--ink-3)}
+.legenda i.b{height:10px;border:1px solid var(--ok);background:var(--ok-soft)}
+.legenda i.c{height:10px;border:1px solid var(--warn);background:var(--warn-soft)}
+
+/* Detalhe */
+.dp{display:flex;flex-direction:column;gap:6px}
+.dp-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:8px 10px;background:var(--surface);border:1px solid var(--line-2);border-radius:8px;font-size:13.5px}
+.dp-item b{font-family:var(--f-disp);font-size:14.5px}
+.dp-item .de{font-family:var(--f-mono);font-size:12.5px;color:var(--ink-2)}
+.dp-item .para{font-family:var(--f-mono);font-size:12.5px;color:var(--accent);font-weight:600}
+.box-acao{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.box-acao h3{font-size:15px}
+.par{border-left:3px solid var(--line);padding:6px 10px;background:var(--surface);border-radius:0 8px 8px 0;font-size:13.5px}
+.par.favoravel{border-left-color:var(--ok)} .par.ressalva{border-left-color:var(--warn)} .par.desfavoravel{border-left-color:var(--crit)}
+.par small{color:var(--ink-3);display:block}
+.ref{font-family:var(--f-mono);font-size:12.5px;background:var(--mute-soft);padding:1px 6px;border-radius:4px}
+.sync-dot{width:10px;height:10px;border-radius:50%;background:var(--ok);display:inline-block}
+.sync-dot.off{background:var(--crit)}
+
+.search input{border:1px solid var(--line);border-radius:8px;padding:8px 11px;background:var(--surface);min-height:38px;color:var(--ink)}
+.search input:focus{outline:none;border-color:var(--accent)}
+.fsel input{border:0;background:transparent;color:var(--ink)}

@@ -1,0 +1,42 @@
+; ============================================================
+;  Coletor - Regulação COI (Modelo 2) · servidor 1
+;  Copie para config.ini e preencha. O config.ini NÃO vai para o repositório.
+; ============================================================
+
+[snowflake]
+; Matrícula
+usuario   =
+; Login do SSO: a MESMA conta Microsoft logada no navegador (vazio = usa "usuario")
+login     =
+; Account/Server URL (Snowsight > Account Details)
+servidor  = <conta>.snowflakecomputing.com
+warehouse =
+role      =
+cache_token = true
+; OPCIONAL: par de chaves RSA (.p8) dispensa o navegador
+chave_privada =
+senha_chave   =
+
+[coleta]
+; Ciclo do espelho de registros (segundos)
+intervalo = 300
+; Publicação de cadastro/rede (horas). Rode com --publicar para forçar.
+publicar_a_cada_horas = 24
+
+[rede]
+; kW de pico = energia mensal / 730 h / fator de carga médio
+fator_carga_medio = 0.55
+fator_potencia = 0.92
+; UC de média tensão: kW = demanda contratada × fator de utilização
+fator_utilizacao_mt = 0.7
+safra_bdgd =
+
+[saida]
+publicado = ../saida/publicado
+espelho   = ../espelho
+
+[servidor2]
+; Pasta "data" do Regulação COI no servidor 2. O usuário do Windows que roda o
+; coletor precisa de ESCRITA em data\publicado e LEITURA no restante.
+ativo = true
+pasta_dados = \\servportaloper\nucleo\Regulacao_coi\data

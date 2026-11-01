@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>Regulação COI</title>
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/coi.png">
+<link rel="stylesheet" href="assets/fonts/fontes.css">
+<link rel="stylesheet" href="assets/estilo.css?v=1">
+<link rel="stylesheet" href="assets/regulacao.css?v=1">
+<script>
+/* Tema antes da primeira pintura. ?tema=escuro para o videowall. */
+(function(){try{var q=(location.search.match(/[?&]tema=(claro|escuro|noturno|auto)/)||[])[1];if(q){q=q==="noturno"?"escuro":q;localStorage.setItem("rcoi_tema",q);}var t=localStorage.getItem("rcoi_tema");if(t==="claro")document.documentElement.setAttribute("data-theme","light");else if(t==="escuro")document.documentElement.setAttribute("data-theme","dark");}catch(e){}})();
+</script>
+</head>
+<body>
+<div id="app"><div class="loading">Carregando…</div></div>
+<div id="drawer" class="drawer" hidden>
+  <div class="dr-scrim" data-act="fechar-dr"></div>
+  <aside class="dr-panel" role="dialog" aria-modal="true" aria-label="Detalhe do registro">
+    <div id="dr-head"></div>
+    <div class="dr-scroll"><div id="dr-body" style="display:flex;flex-direction:column;gap:16px"></div>
+      <section><div class="eyebrow" style="margin-bottom:10px">Trilha do registro</div><ol class="tl" id="dr-tl"></ol></section></div>
+  </aside>
+</div>
+<div id="modal-root"></div>
+<div id="toasts" aria-live="polite"></div>
+<script>
+/*RCOI_CFG*/
+'use strict';
+const CFG = window.RCOI_CFG || {api:'api.php', intervalo:5000, publicacaoAntigaHoras:36};
+
+/* ===================================================================== utilidades */
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
+const esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+const num=(v,c)=>v==null||isNaN(v)?'—':Number(v).toLocaleString('pt-BR',{minimumFractionDigits:c,maximumFractionDigits:c});
+const sinal=(v,c)=>v==null||isNaN(v)?'—':(v>0?'+':'')+num(v,c);
+const tapTxt=t=>t==null?'—':(t>0?'+':'')+t;
+const dt=ms=>{ if(!ms) return ''; const d=new Date(Number(ms)); return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); };
+const ls={get(k){try{return localStorage.getItem(k)}catch(e){return null}}, set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+
+const A={ me:null, csrf:'', perm:{}, rede:{}, ref:null, regs:{}, usuarios:{}, v:0, pagina:'painel',
+  f:{status:'abertos', q:'', alim:''}, proposta:null, timer:null, online:true, instalar:false };
+
+async function api(acao, op={}){
+  const url=CFG.api+'?acao='+encodeURIComponent(acao)+(op.qs?'&'+op.qs:'');
+  const init={method:op.body?'POST':'GET', credentials:'same-origin', headers:{}};
+  if(op.body){ init.headers['Content-Type']='application/json'; init.headers['X-CSRF-Token']=A.csrf; init.body=JSON.stringify(op.body); }
+  let r;
+  try{ r=await fetch(url,init); }catch(e){ setOnline(false); throw new Error('Sem conexão com o servidor.'); }
+  setOnline(true);
+  let j; try{ j=await r.json(); }catch(e){ throw new Error('Resposta inválida do servidor (HTTP '+r.status+').'); }
+  if(!j.ok){ const er=new Error(j.erro||'Erro.'); er.status=r.status; throw er; }
+  return j;
+}
+function setOnline(v){ if(A.online===v) return; A.online=v; const d=$('#sync-dot'); if(d){ d.classList.toggle('off',!v); d.title=v?'Conectado':'Sem conexão'; } }
+
+function toast(msg, kind=''){
+  const el=document.createElement('div'); el.className='toast '+kind; el.innerHTML='<div>'+msg+'</div>';
+  $('#toasts').appendChild(el); setTimeout(()=>el.remove(), 4800);
+}
+function openModal({title, body, size='', onMount}){
+  const root=$('#modal-root'); const w=document.createElement('div'); w.className='modal';
+  w.innerHTML=`<div class="m-scrim" data-close></div><div class="m-box ${size}" role="dialog" aria-modal="true"><div class="m-head"><h3>${title}</h3><button type="button" class="btn btn-ghost btn-sm" data-close aria-label="Fechar">✕</button></div><div class="m-body">${body}</div></div>`;
+  root.appendChild(w); document.body.classList.add('noscroll');
+  const close=()=>{ w.remove(); if(!$('#modal-root .modal')) document.body.classList.remove('noscroll'); };
+  $$('[data-close]',w).forEach(b=>b.onclick=close);
+  if(onMount) onMount(w,close);
+  const f=$('input,select,textarea',w); if(f) setTimeout(()=>f.focus(),30);
+  return close;
+}
+const IC={
+  sun:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  moon:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>',
+  win:'<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5 10 4.5v7H3zM11 4.3 21 3v8.5H11zM3 12.5h7v7L3 18.5zM11 12.5h10V21l-10-1.3z"/></svg>'
+};
+function temaAtual(){ const t=document.documentElement.getAttribute('data-theme'); if(t) return t; return matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'; }
+function trocarTema(){ const n=temaAtual()==='dark'?'light':'dark'; document.documentElement.setAttribute('data-theme',n); ls.set('rcoi_tema',n==='dark'?'escuro':'claro'); const b=$('#bt-tema'); if(b) b.innerHTML=n==='dark'?IC.sun:IC.moon; }
+
+const ROT_TIPO={TRAFO_SE:'OLTC · trafo de SE', REGULADOR:'BRT · regulador de linha', BC:'Banco de capacitores'};
+const ST_CLASSE={solicitada:'st-aberta', em_analise:'st-analise', devolvida:'st-devolvida', aprovada:'st-aprovada', reprovada:'st-reprovada', executada:'st-executada', verificada:'st-ok', cancelada:'st-canc'};
+const ABERTOS=['solicitada','em_analise','devolvida','aprovada','executada'];
+const pill=st=>`<span class="pill ${ST_CLASSE[st]||''}">${esc(A.ref&&A.ref.status[st]||st)}</span>`;
+const alimNome=id=>{ const a=(A.ref&&A.ref.alimentadores||[]).find(x=>Number(x.id)===Number(id)); return a?a.codigo:''; };
+const eqPorId=id=>(A.ref&&A.ref.equipamentos||[]).find(e=>Number(e.id)===Number(id));
+
+function vigenteTxt(e){
+  if(e.tipo==='BC') return `${e.estagios_ligados}/${e.n_estagios} estágio(s) · ${num(e.estagios_ligados*e.kvar_estagio,0)} kvar`;
+  const modo=e.modo==='AUTO'?'auto':'manual';
+  let t=`tap ${tapTxt(Number(e.tap_atual))} · ${modo}`;
+  if(e.modo==='AUTO' && e.v_ref_pu!=null) t+=` · Vref ${num(e.v_ref_pu,3)} · banda ${num(e.banda_pu*100,1)}%`;
+  return t;
+}
+function deParaTxt(x){
+  const o=[];
+  if(x.modo) o.push(x.modo==='AUTO'?'auto':'manual');
+  if(x.tap!=null) o.push('tap '+tapTxt(x.tap));
+  if(x.v_ref_pu!=null) o.push('Vref '+num(x.v_ref_pu,3));
+  if(x.banda_pu!=null) o.push('banda '+num(x.banda_pu*100,1)+'%');
+  if(x.temporizacao_s!=null) o.push(x.temporizacao_s+' s');
+  if(x.estagios!=null) o.push(x.estagios+' estágio(s)');
+  return o.join(' · ');
+}
+
+/* ===================================================================== sessão */
+async function iniciar(){
+  try{
+    const s=await api('sessao');
+    A.me=s.usuario; A.csrf=s.csrf; A.perm=s.permissoes; A.rede=s.rede||{}; A.instalar=s.instalar;
+    if(A.instalar) return telaInstalar();
+    if(!A.me && !s.leitura_publica) return telaSoLogin();
+    await carregarReferencia();
+    A.v=0; A.regs={};
+    await sincronizar();
+    montarShell(); ir(ls.get('rcoi_pagina')||'painel');
+    if(s.expirou) toast('Sua sessão expirou. Entre de novo.');
+    clearInterval(A.timer); A.timer=setInterval(sincronizar, CFG.intervalo);
+  }catch(e){ $('#app').innerHTML=`<main class="main"><div class="alert alert-crit">${esc(e.message)}</div></main>`; }
+}
+async function carregarReferencia(){ A.ref=await api('referencia'); A.perm=A.ref.permissoes; }
+async function sincronizar(){
+  try{
+    const r=await api('sync',{qs:'v='+A.v});
+    if(!r.mudou) return;
+    if(r.completo) A.regs={};
+    Object.assign(A.regs, r.registros||{});
+    if(r.usuarios) A.usuarios=r.usuarios;
+    if(r.equipamentos && A.ref) A.ref.equipamentos=r.equipamentos;
+    const primeira=A.v===0; A.v=r.v;
+    if(!primeira) redesenhar();
+  }catch(e){ if(e.status===401){ clearInterval(A.timer); iniciar(); } }
+}
+function redesenhar(){
+  if(A.pagina==='painel'||A.pagina==='registros') ir(A.pagina, true);
+  const dr=$('#drawer'); if(!dr.hidden && dr.dataset.id && A.regs[dr.dataset.id]) abrirDetalhe(dr.dataset.id, true);
+  atualizarContadores();
+}
+async function aposLogin(r){
+  A.me=r.usuario; A.csrf=r.csrf; A.perm=r.permissoes;
+  $('#modal-root').innerHTML=''; document.body.classList.remove('noscroll');
+  await carregarReferencia(); A.v=0; await sincronizar(); montarShell(); ir(A.pagina||'painel');
+  clearInterval(A.timer); A.timer=setInterval(sincronizar, CFG.intervalo);
+  toast(`Bem-vindo, <b>${esc(A.me.nome)}</b>.`,'ok');
+}
+function modalLogin(){
+  const rede=A.rede||{};
+  openModal({title:'Entrar no Regulação COI', size:'sm', body:`<form class="form" id="lg" autocomplete="on">
+    <p class="muted" style="margin:0">Use o mesmo login da rede (matrícula). O que cada pessoa pode fazer vem do cadastro em Usuários.</p>
+    ${rede.sso?`<button type="button" class="btn btn-lg btn-win" id="lg-win">${IC.win} Entrar com o usuário do Windows</button><div class="ou"><span>ou com usuário e senha</span></div>`:''}
+    <label class="field"><span>Usuário</span><input id="lg-u" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="Ex.: U1205817"></label>
+    <label class="field"><span>Senha${rede.ldap?' <small class="muted">(senha de rede ou do sistema)</small>':''}</span><input id="lg-p" type="password" autocomplete="current-password"></label>
+    <div id="lg-e" class="err" hidden></div>
+    <div class="m-foot"><button type="button" class="btn" data-close>Cancelar</button><button class="btn btn-pri" id="lg-ok">Entrar</button></div></form>`,
+    onMount:(w)=>{
+      const wb=$('#lg-win',w); if(wb) wb.onclick=async()=>{ const er=$('#lg-e',w); wb.disabled=true; er.hidden=true;
+        try{ const r=await fetch('sso.php',{credentials:'same-origin'}); const j=await r.json(); if(!j.ok) throw new Error(j.erro||'Falha no login do Windows.'); await aposLogin(j); }
+        catch(x){ er.textContent=x.message; er.hidden=false; wb.disabled=false; } };
+      $('#lg',w).onsubmit=async e=>{ e.preventDefault(); const b=$('#lg-ok',w), er=$('#lg-e',w); b.disabled=true; er.hidden=true;
+        try{ await aposLogin(await api('login',{body:{usuario:$('#lg-u',w).value, senha:$('#lg-p',w).value}})); }
+        catch(x){ er.textContent=x.message; er.hidden=false; b.disabled=false; $('#lg-p',w).select(); } };
+    }});
+}
+async function sair(){ try{ const r=await api('logout',{body:{}}); A.csrf=r.csrf; }catch(e){} A.me=null; toast('Você saiu.'); iniciar(); }
+function telaInstalar(){
+  $('#app').innerHTML=`<div class="login"><div class="lg-card"><div class="lg-top"><div class="brand"><img class="logo" onerror="this.style.visibility='hidden'" src="assets/coi.png" alt="COI" width="60" height="60"><div><b>Regulação COI</b><small>Primeiro acesso</small></div></div></div>
+  <div class="lg-body"><form class="form" id="ins"><div class="alert alert-info"><b>Banco vazio.</b> Crie o primeiro administrador (perfil supervisor). Ele cadastra os demais usuários.</div>
+  <label class="field"><span>Nome</span><input id="i-n" required></label><label class="field"><span>Login (matrícula)</span><input id="i-u" required placeholder="Ex.: U1205817"></label>
+  <label class="field"><span>Senha (mín. 8)</span><input id="i-p" type="password" required minlength="8"></label><div id="i-e" class="err" hidden></div>
+  <button class="btn btn-pri btn-lg">Criar administrador</button></form></div></div></div>`;
+  $('#ins').onsubmit=async e=>{ e.preventDefault(); try{ await aposLogin(await api('instalar',{body:{nome:$('#i-n').value, usuario:$('#i-u').value, senha:$('#i-p').value}})); }catch(x){ $('#i-e').textContent=x.message; $('#i-e').hidden=false; } };
+}
+function telaSoLogin(){
+  $('#app').innerHTML=`<div class="login"><div class="lg-card"><div class="lg-top"><div class="brand"><img class="logo" onerror="this.style.visibility='hidden'" src="assets/coi.png" alt="COI" width="60" height="60"><div><b>Regulação COI</b><small>Ajustes de regulação de tensão</small></div></div></div><div class="lg-body"><button class="btn btn-pri btn-lg" id="bt-l">Entrar</button></div></div></div>`;
+  $('#bt-l').onclick=modalLogin;
+}
+
+/* ===================================================================== shell */
+function montarShell(){
+  const p=A.perm||{}; const m=A.ref&&A.ref.manifest;
+  const idadeH=m&&m.gerado_em?(Date.now()-new Date(m.gerado_em.replace(' ','T')).getTime())/3600000:0;
+  const nav=[['painel','Painel'],['registros','Registros']];
+  if(p.propor) nav.push(['proposta','Nova proposta']);
+  if(p.usuarios) nav.push(['usuarios','Usuários']);
+  if(p.logs) nav.push(['logs','Logs']);
+  const ini=A.me?A.me.nome.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase():'';
+  $('#app').innerHTML=`
+  ${A.ref&&A.ref.exemplo?`<div class="demo-bar"><b>Dados de exemplo.</b> O servidor 1 ainda não publicou o cadastro da rede: as simulações usam uma rede fictícia.</div>`:''}
+  ${!A.ref.exemplo&&idadeH>CFG.publicacaoAntigaHoras?`<div class="demo-bar"><b>Publicação antiga.</b> O cadastro do servidor 1 é de ${esc(m.gerado_em)}. Confira o coletor.</div>`:''}
+  <header class="top"><div class="top-in">
+    <div class="brand"><img class="logo" onerror="this.style.visibility='hidden'" src="assets/coi.png" alt="COI · Centro de Operações Integradas" width="40" height="40"><div><b>Regulação COI</b><small>Ajustes de regulação de tensão</small></div></div>
+    <nav class="nav" aria-label="Seções">${nav.map(([k,t])=>`<button type="button" data-pg="${k}">${t}${k==='registros'?' <span class="cnt" id="cnt-abertos">0</span>':''}</button>`).join('')}</nav>
+    <div class="top-r">
+      <span class="sync-dot" id="sync-dot" title="Conectado"></span>
+      <button type="button" class="icon-btn" id="bt-tema" title="Alternar tema claro/escuro">${temaAtual()==='dark'?IC.sun:IC.moon}</button>
+      ${A.me?`<button type="button" class="who" id="bt-who" title="Conta"><span class="av">${esc(ini)}</span><span><b>${esc(A.me.nome)}</b><small>${esc(A.me.perfilNome||'')}${A.me.adm?' · ADM':''}</small></span></button>`
+            :`<button type="button" class="btn btn-spark" id="bt-login">Login</button>`}
+    </div></div></header>
+  <main class="main" id="pg"></main>`;
+  $$('[data-pg]').forEach(b=>b.onclick=()=>ir(b.dataset.pg));
+  $('#bt-tema').onclick=trocarTema;
+  if(A.me) $('#bt-who').onclick=modalConta; else $('#bt-login').onclick=modalLogin;
+  atualizarContadores();
+}
+function atualizarContadores(){ const c=$('#cnt-abertos'); if(c) c.textContent=Object.values(A.regs).filter(r=>ABERTOS.includes(r.status)).length; }
+function modalConta(){
+  openModal({title:esc(A.me.nome), size:'sm', body:`<div class="form"><div class="facts"><div class="fact"><dt>Login</dt><dd class="mono">${esc(A.me.usuario)}</dd></div><div class="fact"><dt>Perfil</dt><dd>${esc(A.me.perfilNome)}${A.me.adm?' · ADM':''}</dd></div></div>
+    ${A.me.master?'':`<details><summary class="linkbtn">Trocar minha senha</summary><form class="form" id="ts" style="margin-top:10px"><label class="field"><span>Senha atual</span><input id="ts-a" type="password"></label><label class="field"><span>Nova senha (mín. 8)</span><input id="ts-n" type="password" minlength="8"></label><div class="err" id="ts-e" hidden></div><button class="btn btn-pri">Salvar senha</button></form></details>`}
+    <div class="m-foot"><button type="button" class="btn btn-danger" id="bt-sair">Sair</button></div></div>`,
+    onMount:(w,close)=>{ $('#bt-sair',w).onclick=()=>{ close(); sair(); };
+      const f=$('#ts',w); if(f) f.onsubmit=async e=>{ e.preventDefault(); try{ await api('senha',{body:{atual:$('#ts-a',w).value, nova:$('#ts-n',w).value}}); close(); toast('Senha alterada.','ok'); }catch(x){ $('#ts-e',w).textContent=x.message; $('#ts-e',w).hidden=false; } }; }});
+}
+function ir(pg, silencioso){
+  const p=A.perm||{};
+  if((pg==='proposta'&&!p.propor)||(pg==='usuarios'&&!p.usuarios)||(pg==='logs'&&!p.logs)) pg='painel';
+  A.pagina=pg; ls.set('rcoi_pagina',pg);
+  $$('[data-pg]').forEach(b=>b.setAttribute('aria-current',b.dataset.pg===pg?'page':'false'));
+  const el=$('#pg'); if(!el) return;
+  ({painel:pgPainel, registros:pgRegistros, proposta:pgProposta, usuarios:pgUsuarios, logs:pgLogs})[pg](el, silencioso);
+}
+
+/* ===================================================================== painel */
+function pgPainel(el){
+  const regs=Object.values(A.regs);
+  const cont=st=>regs.filter(r=>r.status===st).length;
+  const eqs=A.ref.equipamentos||[];
+  const noLimite=eqs.filter(e=>e.tipo!=='BC' && (Number(e.tap_atual)===Number(e.tap_max)||Number(e.tap_atual)===Number(e.tap_min)));
+  const m=A.ref.manifest||{};
+  el.innerHTML=`
+  <div class="page-head"><div><div class="eyebrow">Etapa 1 · gestão de ajustes</div><h1>Painel de regulação</h1>
+    <p>Ajustes vigentes dos equipamentos e andamento dos registros. Cadastro publicado pelo servidor 1 em ${esc(m.gerado_em||'—')}.</p></div>
+    <div class="actions">${A.perm.solicitar?'<button class="btn" id="bt-sol">Nova solicitação</button>':''}${A.perm.propor?'<button class="btn btn-pri" id="bt-prop">Nova proposta</button>':''}</div></div>
+  <div class="kpis k5">
+    ${[['solicitada','Solicitações abertas','k-warn'],['em_analise','Aguardando aprovação',''],['aprovada','Aprovadas, a executar',''],['executada','Executadas, a verificar','']].map(([st,t,k])=>
+      `<button type="button" class="kpi kpi-btn ${k}" data-st="${st}"><b>${cont(st)+(st==='solicitada'?cont('devolvida'):0)}</b><span>${t}</span></button>`).join('')}
+    <div class="kpi ${noLimite.length?'k-crit':'k-ok'}"><b>${noLimite.length}</b><span>Comutadores no fim de curso</span></div>
+  </div>
+  <section class="panel"><h2>Equipamentos de regulação</h2>
+    <div class="tbl-wrap"><table class="t"><thead><tr><th>Equipamento</th><th>Tipo</th><th>Alimentador(es)</th><th>Ajuste vigente</th><th>Faixa</th><th>Origem do ajuste</th>${A.perm.propor?'<th></th>':''}</tr></thead>
+    <tbody>${eqs.map(e=>{
+      const lim=e.tipo!=='BC'&&(Number(e.tap_atual)===Number(e.tap_max)||Number(e.tap_atual)===Number(e.tap_min));
+      return `<tr><td><b>${esc(e.codigo)}</b><div class="muted" style="font-size:12.5px">${esc(e.descricao||'')}</div></td>
+        <td><span class="eq-tipo">${esc(ROT_TIPO[e.tipo]||e.tipo)}</span></td>
+        <td>${(e.alimentadores||[]).map(alimNome).map(esc).join(', ')}${e.no_codigo&&e.tipo!=='TRAFO_SE'?` <span class="muted">· nó ${esc(e.no_codigo)}</span>`:''}</td>
+        <td class="eq-vig ${lim?'lim':''}">${esc(vigenteTxt(e))}${lim?' · fim de curso':''}</td>
+        <td class="num">${e.tipo==='BC'?esc(e.n_estagios+' × '+num(e.kvar_estagio,0)+' kvar'):esc(tapTxt(Number(e.tap_min))+' a '+tapTxt(Number(e.tap_max))+' × '+num(e.tap_passo_percent,3)+'%')}</td>
+        <td class="orig">${e.origem_ajuste==='registro'?`<b>${esc(e.registro_vigente)}</b> · ${esc(e.atualizado_em)}`:`Publicado (ADMS/cadastro) · ${esc(e.atualizado_em||'')}`}</td>
+        ${A.perm.propor?`<td><button class="btn btn-sm" data-prop="${e.id}">Propor ajuste</button></td>`:''}</tr>`;}).join('')}</tbody></table></div>
+  </section>
+  <section class="panel"><h2>Movimentação recente</h2>${tabelaRegistros(regs.sort((a,b)=>b.atualizadoEm-a.atualizadoEm).slice(0,8))}</section>`;
+  $$('[data-st]',el).forEach(b=>b.onclick=()=>{ A.f.status=b.dataset.st; ir('registros'); });
+  $$('[data-prop]',el).forEach(b=>b.onclick=()=>novaProposta({equipamento:Number(b.dataset.prop)}));
+  const bs=$('#bt-sol',el); if(bs) bs.onclick=()=>modalSolicitacao();
+  const bp=$('#bt-prop',el); if(bp) bp.onclick=()=>novaProposta({});
+  ligarLinhas(el);
+}
+function tabelaRegistros(lista){
+  if(!lista.length) return '<div class="empty">Nenhum registro.</div>';
+  return `<div class="tbl-wrap"><table class="t"><thead><tr><th>Protocolo</th><th>Situação</th><th>Título</th><th>Alimentador</th><th>Equipamentos</th><th>Aberto por</th><th>Atualizado</th></tr></thead><tbody>
+  ${lista.map(r=>`<tr class="click" data-reg="${r.id}"><td class="num"><b>${esc(r.protocolo)}</b>${r.tipo==='RETROATIVO'?' <span class="tag">retroativo</span>':''}</td><td>${pill(r.status)}</td><td>${esc(r.titulo)}</td><td>${esc(r.alimentador)}</td><td>${esc((r.equipamentos||[]).join(', ')||'—')}</td><td>${esc(r.criadoPor.nome)}</td><td class="num">${esc(dt(r.atualizadoEm))}</td></tr>`).join('')}</tbody></table></div>`;
+}
+function ligarLinhas(el){ $$('[data-reg]',el).forEach(tr=>tr.onclick=()=>abrirDetalhe(tr.dataset.reg)); }
+
+/* ===================================================================== registros */
+function pgRegistros(el, silencioso){
+  const f=A.f;
+  const grupos=[['abertos','Em aberto'],['solicitada','Solicitadas'],['em_analise','Em análise'],['aprovada','Aprovadas'],['executada','Executadas'],['verificada','Verificadas'],['encerrados','Canceladas/reprovadas'],['todos','Todos']];
+  const regs=Object.values(A.regs);
+  const filtra=r=>{
+    if(f.status==='abertos'&&!ABERTOS.includes(r.status)) return false;
+    if(f.status==='encerrados'&&!['cancelada','reprovada'].includes(r.status)) return false;
+    if(f.status==='solicitada'&&!['solicitada','devolvida'].includes(r.status)) return false;
+    if(!['abertos','encerrados','todos','solicitada'].includes(f.status)&&r.status!==f.status) return false;
+    if(f.alim&&String(r.alimentador_id)!==String(f.alim)) return false;
+    if(f.q){ const q=f.q.toLowerCase(); const t=[r.protocolo,r.titulo,r.alimentador,(r.equipamentos||[]).join(' '),r.criadoPor.nome,JSON.stringify(r.referencias||{})].join(' ').toLowerCase(); if(!t.includes(q)) return false; }
+    return true;
+  };
+  const lista=regs.filter(filtra).sort((a,b)=>b.atualizadoEm-a.atualizadoEm);
+  if(silencioso && $('#reg-lista',el)){ $('#reg-lista',el).innerHTML=tabelaRegistros(lista); ligarLinhas(el); return; }
+  el.innerHTML=`<div class="page-head"><div><div class="eyebrow">Solicitação → proposta → aprovação → execução → verificação</div><h1>Registros de ajuste</h1>
+    <p>Registros nunca são excluídos; para tirar de circulação, cancela-se com o motivo.</p></div>
+    <div class="actions">${A.perm.solicitar?'<button class="btn" id="bt-sol">Nova solicitação</button>':''}${A.perm.retroativo?'<button class="btn" id="bt-ret">Registrar ajuste já feito</button>':''}${A.me?'<a class="btn" href="api.php?acao=csv&arquivo=registros">Baixar CSV</a>':''}</div></div>
+  <div class="toolbar"><div class="seg" role="group" aria-label="Situação">${grupos.map(([k,t])=>`<button type="button" data-f="${k}" aria-pressed="${f.status===k}">${t}</button>`).join('')}</div>
+    <label class="fsel"><span>Alimentador</span><select id="f-al"><option value="">Todos</option>${A.ref.alimentadores.map(a=>`<option value="${a.id}" ${String(f.alim)===String(a.id)?'selected':''}>${esc(a.codigo)}</option>`).join('')}</select></label>
+    <div class="search"><input id="f-q" placeholder="Buscar protocolo, título, equipamento, nota SIGA, manobra…" value="${esc(f.q)}"></div></div>
+  <div id="reg-lista">${tabelaRegistros(lista)}</div>`;
+  $$('[data-f]',el).forEach(b=>b.onclick=()=>{ f.status=b.dataset.f; pgRegistros(el); });
+  $('#f-al',el).onchange=e=>{ f.alim=e.target.value; pgRegistros(el); };
+  $('#f-q',el).oninput=e=>{ f.q=e.target.value; pgRegistros(el,true); };
+  const bs=$('#bt-sol',el); if(bs) bs.onclick=()=>modalSolicitacao();
+  const br=$('#bt-ret',el); if(br) br.onclick=()=>modalRetroativo();
+  ligarLinhas(el);
+}
+
+function campoMotivo(id, val){ return `<label class="field"><span>Motivo <em>*</em></span><select id="${id}" required><option value="">Escolha…</option>${Object.entries(A.ref.motivos).map(([k,t])=>`<option value="${k}" ${val===k?'selected':''}>${esc(t)}</option>`).join('')}</select></label>`; }
+function campoAlim(id, val){ return `<label class="field"><span>Alimentador <em>*</em></span><select id="${id}" required><option value="">Escolha…</option>${A.ref.alimentadores.map(a=>`<option value="${a.id}" ${String(val)===String(a.id)?'selected':''}>${esc(a.nome||a.codigo)}</option>`).join('')}</select></label>`; }
+
+function modalSolicitacao(){
+  if(!A.me) return modalLogin();
+  openModal({title:'Nova solicitação de ajuste', body:`<form class="form" id="fs">
+    <p class="muted" style="margin:0">Descreva o problema. Um engenheiro avalia, simula e transforma em proposta.</p>
+    <label class="field"><span>Título <em>*</em></span><input id="s-t" maxlength="140" required placeholder="Ex.: Baixa tensão no fim do CTR-01 no horário de ponta"></label>
+    <div class="grid2">${campoAlim('s-a','')}${campoMotivo('s-m','')}</div>
+    <label class="field"><span>Descrição</span><textarea id="s-d" rows="4" maxlength="3000" placeholder="Onde, quando, medições, reclamações…"></textarea></label>
+    <div class="grid2"><label class="field"><span>Protocolo de reclamação</span><input id="s-r" maxlength="40"></label><label class="field"><span>Incidente / nota SIGA</span><input id="s-i" maxlength="40"></label></div>
+    <div class="err" id="s-e" hidden></div>
+    <div class="m-foot"><button type="button" class="btn" data-close>Cancelar</button><button class="btn btn-pri">Abrir solicitação</button></div></form>`,
+    onMount:(w,close)=>{ $('#fs',w).onsubmit=async e=>{ e.preventDefault();
+      try{ const r=await api('solicitar',{body:{titulo:$('#s-t',w).value, alimentador_id:$('#s-a',w).value, motivo:$('#s-m',w).value, descricao:$('#s-d',w).value, protocolo_reclamacao:$('#s-r',w).value, incidente:$('#s-i',w).value}});
+        close(); toast(`Solicitação <b>${esc(r.registro.protocolo)}</b> aberta.`,'ok'); await sincronizar(); redesenhar(); }
+      catch(x){ $('#s-e',w).textContent=x.message; $('#s-e',w).hidden=false; } }; }});
+}
+
+function camposAjuste(e, pre){
+  pre=pre||{};
+  if(e.tipo==='BC') return `<label class="field"><span>Estágios ligados (de 0 a ${e.n_estagios} × ${num(e.kvar_estagio,0)} kvar)</span><input type="number" data-k="estagios" min="0" max="${e.n_estagios}" step="1" value="${pre.estagios!=null?pre.estagios:e.estagios_ligados}"></label>`;
+  const modo=pre.modo||e.modo||'MANUAL';
+  return `<div class="field"><span>Modo de operação</span><div class="seg" data-modo>${['AUTO','MANUAL'].map(m=>`<button type="button" data-m="${m}" aria-pressed="${modo===m}">${m==='AUTO'?'Automático (relé)':'Manual (tap fixo)'}</button>`).join('')}</div></div>
+    <div class="row3">
+      <label class="field"><span>Tap ${modo==='AUTO'?'(opcional)':''}</span><input type="number" data-k="tap" min="${e.tap_min}" max="${e.tap_max}" step="1" value="${pre.tap!=null?pre.tap:e.tap_atual}"></label>
+      <label class="field" data-auto><span>V ref (p.u.)</span><input type="number" data-k="v_ref_pu" min="0.95" max="1.05" step="0.005" value="${pre.v_ref_pu!=null?pre.v_ref_pu:(e.v_ref_pu!=null?e.v_ref_pu:1)}"></label>
+      <label class="field" data-auto><span>Banda (%)</span><input type="number" data-k="banda_pct" min="0.5" max="5" step="0.5" value="${pre.banda_pu!=null?pre.banda_pu*100:(e.banda_pu!=null?e.banda_pu*100:2)}"></label>
+    </div>`;
+}
+function lerAjuste(card, e){
+  if(e.tipo==='BC') return {equipamento_id:e.id, estagios:Number($('[data-k=estagios]',card).value)};
+  const modo=$('[data-modo] [aria-pressed=true]',card).dataset.m;
+  const a={equipamento_id:e.id, modo};
+  const tap=$('[data-k=tap]',card).value;
+  if(tap!==''&&(modo==='MANUAL'||Number(tap)!==Number(e.tap_atual))) a.tap=Number(tap);
+  if(modo==='AUTO'){ a.v_ref_pu=Number($('[data-k=v_ref_pu]',card).value); a.banda_pu=Number($('[data-k=banda_pct]',card).value)/100; }
+  return a;
+}
+function ligarModo(card){
+  const atualizar=()=>{ const m=$('[data-modo] [aria-pressed=true]',card); const auto=m&&m.dataset.m==='AUTO'; $$('[data-auto]',card).forEach(x=>x.hidden=!auto); };
+  $$('[data-modo] button',card).forEach(b=>b.onclick=()=>{ $$('[data-modo] button',card).forEach(x=>x.setAttribute('aria-pressed',x===b)); atualizar(); });
+  atualizar();
+}
+
+function modalRetroativo(){
+  const eqs=A.ref.equipamentos;
+  openModal({title:'Registrar ajuste já feito', body:`<form class="form" id="fr">
+    <p class="muted" style="margin:0">Para correções feitas em campo ou no ADMS que ficaram só numa observação do SIGA. Entra direto como <b>executado</b>; vira o ajuste vigente se for o mais recente.</p>
+    <label class="field"><span>Equipamento <em>*</em></span><select id="r-eq" required><option value="">Escolha…</option>${eqs.map(e=>`<option value="${e.id}">${esc(e.codigo)} · ${esc(ROT_TIPO[e.tipo])} · ${esc((e.alimentadores||[]).map(alimNome).join(', '))}</option>`).join('')}</select></label>
+    <div id="r-campos" class="eq-card" hidden></div>
+    <label class="field"><span>Título <em>*</em></span><input id="r-t" maxlength="140" required placeholder="Ex.: Tap do RT-0142 ajustado pela equipe de campo"></label>
+    <div class="grid2">${campoAlim('r-a','')}${campoMotivo('r-m','')}</div>
+    <div class="grid2"><label class="field"><span>Nota SIGA</span><input id="r-n" maxlength="40" placeholder="Nº da nota (NR, mãe ou filha)"></label><label class="field"><span>Manobra ADMS</span><input id="r-ma" maxlength="40"></label></div>
+    <label class="field"><span>Data/hora da execução <em>*</em></span><input id="r-q" type="datetime-local" required></label>
+    <label class="field"><span>Observação</span><textarea id="r-o" rows="3" maxlength="1000" placeholder="Copie aqui a observação da nota do SIGA"></textarea></label>
+    <div class="err" id="r-e" hidden></div>
+    <div class="m-foot"><button type="button" class="btn" data-close>Cancelar</button><button class="btn btn-pri">Registrar</button></div></form>`,
+    onMount:(w,close)=>{
+      const box=$('#r-campos',w);
+      $('#r-eq',w).onchange=ev=>{ const e=eqPorId(ev.target.value); if(!e){ box.hidden=true; return; }
+        box.hidden=false; box.innerHTML=`<div class="now">Vigente: ${esc(vigenteTxt(e))}</div>`+camposAjuste(e); ligarModo(box);
+        const al=$('#r-a',w); if(!al.value&&e.alimentadores&&e.alimentadores.length) al.value=e.alimentadores[0]; };
+      $('#fr',w).onsubmit=async ev=>{ ev.preventDefault();
+        const e=eqPorId($('#r-eq',w).value);
+        try{ if(!e) throw new Error('Escolha o equipamento.');
+          const r=await api('retroativo',{body:{titulo:$('#r-t',w).value, alimentador_id:$('#r-a',w).value, motivo:$('#r-m',w).value, nota_siga:$('#r-n',w).value, manobra_adms:$('#r-ma',w).value,
+            executado_em:$('#r-q',w).value, observacao:$('#r-o',w).value, ajustes:[lerAjuste(box,e)]}});
+          close(); toast(`Ajuste <b>${esc(r.registro.protocolo)}</b> registrado.`,'ok'); await carregarReferencia(); await sincronizar(); redesenhar(); }
+        catch(x){ $('#r-e',w).textContent=x.message; $('#r-e',w).hidden=false; } };
+    }});
+}
+
+/* ===================================================================== detalhe */
+async function abrirDetalhe(id, silencioso){
+  const r=A.regs[id]; if(!r) return;
+  const dr=$('#drawer'); dr.hidden=false; dr.dataset.id=id; document.body.classList.add('noscroll');
+  $('#dr-head').innerHTML=`<div class="dh-row" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--surface)">
+    <div><div class="eyebrow">${esc(r.tipo==='RETROATIVO'?'Ajuste retroativo':r.tipo==='SOLICITACAO'?'Solicitação':'Proposta de ajuste')}</div><h2 style="font-size:20px" class="mono">${esc(r.protocolo)}</h2></div>
+    <div style="display:flex;gap:8px;align-items:center">${pill(r.status)}<button class="btn btn-ghost btn-sm" data-act="fechar-dr" aria-label="Fechar">✕</button></div></div>`;
+  const ref=r.referencias||{};
+  const refs=[['nota_siga','Nota SIGA'],['manobra_adms','Manobra ADMS'],['incidente','Incidente'],['protocolo_reclamacao','Reclamação']].filter(([k])=>ref[k]).map(([k,t])=>`${t} <span class="ref">${esc(ref[k])}</span>`).join(' · ');
+  let h=`<section><h3 style="font-size:18px;margin-bottom:8px">${esc(r.titulo)}</h3>
+    <dl class="facts"><div class="fact"><dt>Alimentador</dt><dd>${esc(r.alimentador||'—')}</dd></div><div class="fact"><dt>Motivo</dt><dd>${esc(A.ref.motivos[r.motivo]||'—')}</dd></div>
+    <div class="fact"><dt>Aberto por</dt><dd>${esc(r.criadoPor.nome)} <span class="muted">(${esc(A.ref.perfis[r.criadoPor.perfil]||'')})</span></dd></div><div class="fact"><dt>Aberto em</dt><dd class="mono">${esc(dt(r.criadoEm))}</dd></div>
+    ${refs?`<div class="fact full"><dt>Referências</dt><dd>${refs}</dd></div>`:''}
+    ${r.descricao?`<div class="fact full"><dt>Descrição</dt><dd style="white-space:pre-wrap">${esc(r.descricao)}</dd></div>`:''}</dl></section>`;
+  if(r.ajustes&&r.ajustes.length){
+    h+=`<section><div class="eyebrow" style="margin-bottom:8px">Ajustes</div><div class="dp">${r.ajustes.map(a=>`<div class="dp-item"><div><b>${esc(a.codigo)}</b> <span class="eq-tipo">${esc(ROT_TIPO[a.tipo]||'')}</span><div class="de">de: ${esc(deParaTxt(a.de))}</div><div class="para">para: ${esc(deParaTxt(a.para))}</div></div></div>`).join('')}</div></section>`;
+  }
+  if(r.simulacao&&r.simulacao.alimentadores){
+    const c=r.simulacao.cenario;
+    h+=`<section><div class="eyebrow" style="margin-bottom:8px">Simulação no momento da proposta · carga ${num(c.fator_carga*100,0)}% · GD ${num(c.fator_gd*100,0)}% · V AT ${num(c.v_fonte_pu,3)} p.u.</div>
+      ${r.simulacao.alimentadores.map(s=>`<div class="alim-res" style="margin-bottom:10px"><h3>${esc(s.alimentador)}${s.principal?'':' <span class="tag">afetado pela barra da SE</span>'}</h3>${tabelaComparacao(s)}</div>`).join('')}</section>`;
+  }
+  if(r.pareceres&&r.pareceres.length){
+    const nm={favoravel:'Favorável',ressalva:'Favorável com ressalva',desfavoravel:'Desfavorável'};
+    h+=`<section><div class="eyebrow" style="margin-bottom:8px">Pareceres</div><div class="dp">${r.pareceres.map(p=>`<div class="par ${p.conclusao}"><b>${nm[p.conclusao]}</b> · ${esc(p.por.nome)}${p.por.area?' ('+esc(p.por.area)+')':''}<small>${esc(dt(p.em))}</small><div style="white-space:pre-wrap;margin-top:4px">${esc(p.texto)}</div></div>`).join('')}</div></section>`;
+  }
+  const ex=r.execucao, ve=r.verificacao, ap=r.aprovacao;
+  if(ap||ex||ve||r.cancelamento){
+    h+=`<dl class="facts">${ap?`<div class="fact"><dt>Decisão</dt><dd>${esc({aprovar:'Aprovada',reprovar:'Reprovada',devolver:'Devolvida'}[ap.decisao])} por ${esc(ap.por.nome)}${ap.comentario?'<br><span class="muted">'+esc(ap.comentario)+'</span>':''}</dd></div>`:''}
+      ${ex?`<div class="fact"><dt>Execução (${esc(ex.origem)})</dt><dd class="mono">${esc(dt(ex.executado_em))}</dd><dd>${esc(ex.por.nome)}${ex.observacao?'<br><span class="muted">'+esc(ex.observacao)+'</span>':''}</dd></div>`:''}
+      ${ve?`<div class="fact full"><dt>Verificação</dt><dd>${esc({conforme:'Conforme o previsto',parcial:'Parcialmente conforme',nao_conforme:'Não conforme'}[ve.resultado])} · ${esc(ve.por.nome)}${ve.v_min_medido_pu?` · V mín medida ${num(ve.v_min_medido_pu,3)}`:''}${ve.v_max_medido_pu?` · V máx medida ${num(ve.v_max_medido_pu,3)}`:''}${ve.observacao?'<br><span class="muted">'+esc(ve.observacao)+'</span>':''}</dd></div>`:''}
+      ${r.cancelamento?`<div class="fact full"><dt>Cancelamento</dt><dd>${esc(r.cancelamento.por.nome)}: ${esc(r.cancelamento.motivo)}</dd></div>`:''}</dl>`;
+  }
+  h+=acoesDetalhe(r);
+  $('#dr-body').innerHTML=h;
+  ligarAcoes(r);
+  if(!silencioso) $('#dr-tl').innerHTML='<li><span class="ic"><i></i></span><div class="hd">Carregando…</div></li>';
+  try{ const ev=(await api('eventos',{qs:'id='+encodeURIComponent(id)})).eventos;
+    const cor=a=>a.includes('aprovado')||a.includes('verificado')?'c-ok':a.includes('reprovado')||a.includes('cancelado')?'c-crit':a.includes('devolvido')?'c-warn':a.includes('executado')||a.includes('retroativo')?'c-acc':a.includes('parecer')?'c-violet':'c-info';
+    $('#dr-tl').innerHTML=ev.slice().reverse().map(e=>`<li><span class="ic ${cor(e.acao)}"><i></i></span><div><div class="hd"><b>${esc(e.texto)}</b> · ${esc(e.por.nome)}<span class="when">${esc(dt(e.em))}</span></div>${e.detalhe?`<div class="tx">${esc(e.detalhe)}</div>`:''}</div></li>`).join('');
+  }catch(e){ $('#dr-tl').innerHTML=`<li><div class="err">${esc(e.message)}</div></li>`; }
+}
+function fecharDetalhe(){ const dr=$('#drawer'); dr.hidden=true; dr.dataset.id=''; if(!$('#modal-root .modal')) document.body.classList.remove('noscroll'); }
+document.addEventListener('click',e=>{ if(e.target.closest('[data-act=fechar-dr]')) fecharDetalhe(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ const m=$$('#modal-root .modal'); if(m.length){ m[m.length-1].remove(); if(!$('#modal-root .modal')&&$('#drawer').hidden) document.body.classList.remove('noscroll'); } else if(!$('#drawer').hidden) fecharDetalhe(); } });
+
+function acoesDetalhe(r){
+  const p=A.perm||{}; const st=r.status; let h='';
+  const box=(t,c)=>`<section class="box-acao"><h3>${t}</h3>${c}</section>`;
+  if(!A.me) return ABERTOS.includes(st)?`<div class="alert alert-info">Entre no sistema para atuar neste registro. <button class="linkbtn" id="ac-login">Login</button></div>`:'';
+  if(p.propor&&(st==='solicitada'||st==='devolvida')) h+=box('Proposta de ajuste',`<p class="muted" style="margin:0">${st==='devolvida'?'O supervisor devolveu a proposta. Ajuste e reenvie.':'Simule e proponha os ajustes para atender esta solicitação.'}</p><div class="actions"><button class="btn btn-pri" id="ac-propor">${st==='devolvida'?'Refazer proposta':'Criar proposta'}</button></div>`);
+  if(p.aprovar&&st==='em_analise') h+=box('Decisão do supervisor',`<label class="field"><span>Comentário</span><textarea id="ac-dc" rows="2" maxlength="1000" placeholder="Obrigatório para reprovar ou devolver"></textarea></label>
+    <div class="actions"><button class="btn btn-pri" data-dec="aprovar">Aprovar</button><button class="btn" data-dec="devolver">Devolver para ajuste</button><button class="btn btn-danger" data-dec="reprovar">Reprovar</button></div>`);
+  if(p.executar&&st==='aprovada') h+=box('Confirmar execução',`<div class="grid2"><label class="field"><span>Manobra ADMS</span><input id="ac-ma" maxlength="40"></label><label class="field"><span>Nota SIGA</span><input id="ac-ns" maxlength="40"></label></div>
+    <label class="field"><span>Executado em</span><input id="ac-q" type="datetime-local"><span class="hint">Em branco = agora.</span></label>
+    <label class="field"><span>Observação</span><textarea id="ac-eo" rows="2" maxlength="1000"></textarea></label><div class="actions"><button class="btn btn-pri" id="ac-exe">Confirmar execução</button></div>`);
+  if(p.verificar&&st==='executada') h+=box('Verificação pós-ajuste',`<p class="muted" style="margin:0">Compare a tensão medida no ADMS depois do ajuste com a prevista na simulação.</p>
+    <label class="field"><span>Resultado</span><select id="ac-vr"><option value="">Escolha…</option><option value="conforme">Conforme o previsto</option><option value="parcial">Parcialmente conforme</option><option value="nao_conforme">Não conforme</option></select></label>
+    <div class="grid2"><label class="field"><span>V mín medida (p.u.)</span><input id="ac-vmin" type="number" step="0.001" min="0.7" max="1.3"></label><label class="field"><span>V máx medida (p.u.)</span><input id="ac-vmax" type="number" step="0.001" min="0.7" max="1.3"></label></div>
+    <label class="field"><span>Observação</span><textarea id="ac-vo" rows="2" maxlength="1000"></textarea></label><div class="actions"><button class="btn btn-pri" id="ac-ver">Registrar verificação</button></div>`);
+  if(p.parecer&&['solicitada','em_analise','devolvida','aprovada'].includes(st)) h+=box('Parecer técnico',`<label class="field"><span>Conclusão</span><select id="ac-pc"><option value="">Escolha…</option><option value="favoravel">Favorável</option><option value="ressalva">Favorável com ressalva</option><option value="desfavoravel">Desfavorável</option></select></label>
+    <label class="field"><span>Parecer</span><textarea id="ac-pt" rows="3" maxlength="2000"></textarea></label><div class="actions"><button class="btn" id="ac-par">Registrar parecer</button></div>`);
+  const autor=r.criadoPor.uid===A.me.uid;
+  if(['solicitada','em_analise','devolvida','aprovada'].includes(st)&&(autor||p.aprovar||A.me.adm)) h+=`<details class="box-acao"><summary class="linkbtn">Cancelar este registro</summary><label class="field" style="margin-top:8px"><span>Motivo</span><textarea id="ac-cm" rows="2" maxlength="1000"></textarea></label><div class="actions"><button class="btn btn-danger" id="ac-can">Cancelar registro</button></div></details>`;
+  return h+'<div class="err" id="ac-err" hidden></div>';
+}
+function ligarAcoes(r){
+  const go=async(acao, body, msg)=>{ const er=$('#ac-err'); er.hidden=true;
+    try{ await api(acao,{body:Object.assign({id:r.id},body)}); toast(msg,'ok'); if(acao==='executar') await carregarReferencia(); await sincronizar(); redesenhar(); }
+    catch(x){ er.textContent=x.message; er.hidden=false; } };
+  const b=id=>$('#'+id);
+  if(b('ac-login')) b('ac-login').onclick=modalLogin;
+  if(b('ac-propor')) b('ac-propor').onclick=()=>{ fecharDetalhe(); novaProposta({registro:r}); };
+  $$('[data-dec]').forEach(x=>x.onclick=()=>go('decidir',{decisao:x.dataset.dec, comentario:b('ac-dc').value},'Decisão registrada.'));
+  if(b('ac-exe')) b('ac-exe').onclick=()=>go('executar',{manobra_adms:b('ac-ma').value, nota_siga:b('ac-ns').value, executado_em:b('ac-q').value, observacao:b('ac-eo').value},'Execução confirmada. Ajuste vigente atualizado.');
+  if(b('ac-ver')) b('ac-ver').onclick=()=>go('verificar',{resultado:b('ac-vr').value, v_min_medido_pu:b('ac-vmin').value, v_max_medido_pu:b('ac-vmax').value, observacao:b('ac-vo').value},'Verificação registrada.');
+  if(b('ac-par')) b('ac-par').onclick=()=>go('parecer',{conclusao:b('ac-pc').value, texto:b('ac-pt').value},'Parecer registrado.');
+  if(b('ac-can')) b('ac-can').onclick=()=>go('cancelar',{motivo:b('ac-cm').value},'Registro cancelado.');
+}
+
+/* ===================================================================== comparação e perfil */
+function tabelaComparacao(s){
+  const a=s.antes, d=s.depois;
+  const linha=(rot,ka,c,menorMelhor,un='')=>{ const va=a[ka], vd=d[ka]; const dv=(va==null||vd==null)?null:vd-va;
+    const cls=dv==null||Math.abs(dv)<Math.pow(10,-c)/2?'':((menorMelhor?dv<0:dv>0)?'bom':'ruim');
+    return `<tr><td>${rot}</td><td>${num(va,c)}${un}</td><td><b>${num(vd,c)}</b>${un}</td><td class="${cls}">${dv==null?'—':sinal(dv,c)}</td></tr>`; };
+  const vMinCls=(v)=>v<s.limites_pu[1]?'ruim':'';
+  const taps=d.taps.map(t=>{ const ta=a.taps.find(x=>x.id===t.id); return `${esc(t.codigo)} ${tapTxt(ta?ta.tap:null)} → <b>${tapTxt(t.tap)}</b>`; }).join(' · ');
+  return `<div class="tbl-wrap"><table class="cmp"><thead><tr><th>Indicador</th><th>Vigente</th><th>Proposto</th><th>Δ</th></tr></thead><tbody>
+    <tr><td>V mínima (p.u.) · nó</td><td class="${vMinCls(a.v_min_pu)}">${num(a.v_min_pu,3)} · ${esc(a.no_v_min)}</td><td class="${vMinCls(d.v_min_pu)}"><b>${num(d.v_min_pu,3)}</b> · ${esc(d.no_v_min)}</td><td class="${d.v_min_pu>a.v_min_pu?'bom':d.v_min_pu<a.v_min_pu?'ruim':''}">${sinal(d.v_min_pu-a.v_min_pu,3)}</td></tr>
+    <tr><td>V máxima (p.u.) · nó</td><td class="${a.v_max_pu>s.limites_pu[2]?'ruim':''}">${num(a.v_max_pu,3)} · ${esc(a.no_v_max)}</td><td class="${d.v_max_pu>s.limites_pu[2]?'ruim':''}"><b>${num(d.v_max_pu,3)}</b> · ${esc(d.no_v_max)}</td><td>${sinal(d.v_max_pu-a.v_max_pu,3)}</td></tr>
+    ${linha('Barra da SE (p.u.)','v_barra_se_pu',3,false)}
+    ${linha('UCs em faixa precária','ucs_precaria',0,true)}
+    ${linha('UCs em faixa crítica','ucs_critica',0,true)}
+    ${linha('Nós fora da faixa adequada','nos_fora',0,true)}
+    ${linha('Perdas técnicas (kW)','perdas_kw',0,true)}
+    ${a.carregamento_trafo!=null?linha('Carregamento do trafo da SE (%)','carregamento_trafo',1,true):''}
+    <tr><td>Fluxo reverso</td><td>${a.fluxo_reverso?'sim':'não'}</td><td><b>${d.fluxo_reverso?'sim':'não'}</b></td><td></td></tr>
+    ${taps?`<tr><td>Taps resultantes</td><td colspan="3" style="text-align:left;white-space:normal">${taps}</td></tr>`:''}
+    ${d.bcs&&d.bcs.length?`<tr><td>Bancos de capacitores</td><td colspan="3" style="text-align:left;white-space:normal">${d.bcs.map(b=>{ const ba=(a.bcs||[]).find(x=>x.id===b.id); return `${esc(b.codigo)} ${ba?ba.estagios:'?'} → <b>${b.estagios}</b> estágio(s) · ${num(b.kvar_efetivo,0)} kvar efetivos`; }).join(' · ')}</td></tr>`:''}
+  </tbody></table></div>`;
+}
+function svgPerfil(s){
+  const W=1000,H=300,mL=50,mR=14,mT=12,mB=36, lim=s.limites_pu;
+  const pa=s.antes.perfil, pd=s.depois.perfil;
+  const xs=pd.map(n=>n.distancia_km), vs=pa.concat(pd).map(n=>n.v_pu);
+  const xMax=Math.max(1,Math.ceil(Math.max(...xs))); const yMin=Math.floor(Math.min(0.88,Math.min(...vs)-0.01)/0.02)*0.02, yMax=Math.ceil(Math.max(1.06,Math.max(...vs)+0.01)/0.02)*0.02;
+  const X=x=>mL+(W-mL-mR)*x/xMax, Y=v=>mT+(H-mT-mB)*(1-(v-yMin)/(yMax-yMin));
+  const faixa=(v1,v2,c)=>{ const a=Y(Math.min(Math.max(v2,yMin),yMax)), b=Y(Math.min(Math.max(v1,yMin),yMax)); return b>a?`<rect class="${c}" x="${mL}" y="${a}" width="${W-mL-mR}" height="${b-a}"/>`:''; };
+  const seg=(p,cls)=>{ const pc={}; p.forEach(n=>pc[n.codigo]=n); return p.filter(n=>n.pai&&pc[n.pai]).map(n=>`<line class="${cls}" x1="${X(pc[n.pai].distancia_km)}" y1="${Y(pc[n.pai].v_pu)}" x2="${X(n.distancia_km)}" y2="${Y(n.v_pu)}"/>`).join(''); };
+  let g='';
+  for(let v=yMin; v<=yMax+1e-9; v+=0.02){ g+=`<line class="grade" x1="${mL}" x2="${W-mR}" y1="${Y(v)}" y2="${Y(v)}"/><text class="eixo" x="${mL-6}" y="${Y(v)+4}" text-anchor="end">${num(v,2)}</text>`; }
+  const passo=xMax>12?4:2; for(let x=0;x<=xMax;x+=passo){ g+=`<text class="eixo" x="${X(x)}" y="${H-mB+16}" text-anchor="middle">${x}</text>`; }
+  const pts=pd.map(n=>`<circle class="pt ${n.classe==='CRITICA'?'pt-crit':n.classe==='PRECARIA'?'pt-warn':'pt-ok'}" cx="${X(n.distancia_km)}" cy="${Y(n.v_pu)}" r="4.5"><title>${esc(n.codigo+' · '+n.nome)} — ${num(n.v_pu,3)} p.u.</title></circle>`).join('');
+  return `<svg class="perfil" viewBox="0 0 ${W} ${H}" role="img" aria-label="Perfil de tensão ao longo do alimentador ${esc(s.alimentador)}">
+    ${faixa(lim[0],lim[1],'prec')}${faixa(lim[1],lim[2],'adeq')}${lim[3]>lim[2]?faixa(lim[2],lim[3],'prec'):''}${g}
+    ${seg(pa,'antes')}${seg(pd,'depois')}${pts}
+    <text class="eixo" x="${(W+mL)/2}" y="${H-4}" text-anchor="middle">distância da SE (km)</text></svg>
+    <div class="legenda"><span><i class="a"></i>Vigente</span><span><i></i>Proposto</span><span><i class="b"></i>Faixa adequada</span><span><i class="c"></i>Faixa precária</span></div>`;
+}
+
+/* ===================================================================== nova proposta */
+function novaProposta(op){
+  const r=op.registro||null;
+  let alim=r&&r.alimentador_id?r.alimentador_id:'';
+  if(op.equipamento){ const e=eqPorId(op.equipamento); if(e&&e.alimentadores) alim=e.alimentadores[0]; }
+  A.proposta={registro:r, alim:alim?Number(alim):(A.ref.alimentadores[0]||{}).id, marcados:op.equipamento?[op.equipamento]:[], pre:{}, cenario:{fator_carga:1, fator_gd:0, v_fonte_pu:1}, resultado:null};
+  if(r&&r.ajustes) r.ajustes.forEach(a=>{ A.proposta.marcados.push(a.equipamento_id); A.proposta.pre[a.equipamento_id]=a.para; });
+  if(r&&r.simulacao&&r.simulacao.cenario) A.proposta.cenario=r.simulacao.cenario;
+  ir('proposta');
+}
+function pgProposta(el){
+  if(!A.proposta) A.proposta={registro:null, alim:(A.ref.alimentadores[0]||{}).id, marcados:[], pre:{}, cenario:{fator_carga:1, fator_gd:0, v_fonte_pu:1}, resultado:null};
+  const P=A.proposta, r=P.registro, c=P.cenario;
+  const eqs=A.ref.equipamentos.filter(e=>(e.alimentadores||[]).includes(Number(P.alim)));
+  el.innerHTML=`<div class="page-head"><div><div class="eyebrow">${r?`Completa ${esc(r.tipo==='SOLICITACAO'?'a solicitação':'o registro')} ${esc(r.protocolo)}`:'Engenheiro / supervisor'}</div><h1>Nova proposta de ajuste</h1>
+    <p>Escolha os equipamentos, defina os novos ajustes e simule. A proposta vai para aprovação com o retrato da simulação.</p></div>
+    ${r?'':'<div class="actions"></div>'}</div>
+  ${r?`<div class="alert alert-info"><b>${esc(r.titulo)}</b>${r.descricao?' — '+esc(r.descricao):''}</div>`:''}
+  <section class="panel"><h2>Cenário</h2><div class="toolbar">
+    <label class="fsel"><span>Alimentador</span><select id="p-al">${A.ref.alimentadores.map(a=>`<option value="${a.id}" ${Number(P.alim)===Number(a.id)?'selected':''}>${esc(a.nome||a.codigo)}</option>`).join('')}</select></label>
+    <div class="seg" role="group" aria-label="Patamar">${[[0.4,'Leve'],[0.7,'Média'],[1,'Pesada']].map(([v,t])=>`<button type="button" data-pat="${v}" aria-pressed="${Math.abs(c.fator_carga-v)<1e-6}">${t}</button>`).join('')}</div>
+    <label class="fsel"><span>Carga %</span><input id="p-fc" type="number" min="0" max="200" step="5" value="${Math.round(c.fator_carga*100)}" style="width:80px"></label>
+    <label class="fsel"><span>GD %</span><input id="p-fg" type="number" min="0" max="150" step="5" value="${Math.round(c.fator_gd*100)}" style="width:80px"></label>
+    <label class="fsel"><span>V AT (p.u.)</span><input id="p-va" type="number" min="0.85" max="1.15" step="0.005" value="${c.v_fonte_pu}" style="width:90px"></label>
+  </div></section>
+  <section class="panel"><h2>Equipamentos do alimentador</h2>
+    ${eqs.length?`<div class="eq-grid">${eqs.map(e=>`<div class="eq-card ${P.marcados.includes(e.id)?'on':''}" data-eq="${e.id}">
+      <header><div><b>${esc(e.codigo)}</b><small>${esc(ROT_TIPO[e.tipo])}${e.tipo==='TRAFO_SE'&&e.alimentadores.length>1?' · atende '+e.alimentadores.map(alimNome).join(', '):''}</small></div>
+      <label class="switch"><input type="checkbox" data-inc ${P.marcados.includes(e.id)?'checked':''}> Incluir</label></header>
+      <div class="now">Vigente: <span class="mono">${esc(vigenteTxt(e))}</span></div>
+      <fieldset ${P.marcados.includes(e.id)?'':'disabled'}>${camposAjuste(e,P.pre[e.id])}</fieldset></div>`).join('')}</div>`:'<div class="empty">Nenhum equipamento de regulação neste alimentador.</div>'}
+    <div class="actions" style="margin-top:12px"><button class="btn btn-pri" id="p-sim">Simular</button><span class="muted" id="p-st"></span></div>
+    <div class="err" id="p-err" hidden></div>
+  </section>
+  <section id="p-res"></section>`;
+  $('#p-al',el).onchange=e=>{ P.alim=Number(e.target.value); P.marcados=P.marcados.filter(id=>{ const q=eqPorId(id); return q&&q.alimentadores.includes(P.alim); }); P.resultado=null; pgProposta(el); };
+  $$('[data-pat]',el).forEach(b=>b.onclick=()=>{ $('#p-fc',el).value=Math.round(Number(b.dataset.pat)*100); $$('[data-pat]',el).forEach(x=>x.setAttribute('aria-pressed',x===b)); });
+  $$('[data-eq]',el).forEach(card=>{ ligarModo(card); const chk=$('[data-inc]',card);
+    chk.onchange=()=>{ const id=Number(card.dataset.eq); card.classList.toggle('on',chk.checked); $('fieldset',card).disabled=!chk.checked;
+      P.marcados=chk.checked?P.marcados.concat([id]):P.marcados.filter(x=>x!==id); }; });
+  $('#p-sim',el).onclick=()=>simularProposta(el);
+  if(P.resultado) mostrarResultado(el);
+}
+function lerProposta(el){
+  const P=A.proposta;
+  P.cenario={fator_carga:Number($('#p-fc',el).value)/100, fator_gd:Number($('#p-fg',el).value)/100, v_fonte_pu:Number($('#p-va',el).value)};
+  P.ajustes=P.marcados.map(id=>{ const card=$(`[data-eq="${id}"]`,el), e=eqPorId(id); const a=lerAjuste(card,e); P.pre[id]=a.modo?Object.assign({},a):{estagios:a.estagios}; return a; });
+}
+async function simularProposta(el){
+  const P=A.proposta, er=$('#p-err',el), st=$('#p-st',el), b=$('#p-sim',el); er.hidden=true;
+  lerProposta(el);
+  if(!P.ajustes.length){ er.textContent='Marque pelo menos um equipamento em "Incluir".'; er.hidden=false; return; }
+  b.disabled=true; st.textContent='Calculando…';
+  try{ P.resultado=await api('simular',{body:{alimentador_id:P.alim, ajustes:P.ajustes, cenario:P.cenario}}); st.textContent=''; mostrarResultado(el); $('#p-res',el).scrollIntoView({behavior:'smooth',block:'start'}); }
+  catch(x){ er.textContent=x.message; er.hidden=false; st.textContent=''; }
+  b.disabled=false;
+}
+function mostrarResultado(el){
+  const P=A.proposta, res=P.resultado, r=P.registro;
+  const box=$('#p-res',el);
+  box.innerHTML=`<div class="panel" style="display:flex;flex-direction:column;gap:16px"><h2>Resultado da simulação</h2>
+    ${res.alimentadores.map(s=>`<div class="alim-res"><h3>${esc(s.nome||s.alimentador)}${s.principal?'':' <span class="tag">afetado pela barra da SE</span>'}</h3>${svgPerfil(s)}${tabelaComparacao(s)}</div>`).join('')}
+    <form class="form" id="p-env" style="border-top:1px solid var(--line);padding-top:14px"><h2 style="margin:0">Enviar para aprovação</h2>
+      <label class="field"><span>Título <em>*</em></span><input id="p-t" maxlength="140" value="${esc(r?r.titulo:'')}" placeholder="Ex.: Ligar BC-0310 e subir V ref do RT-0142 na ponta"></label>
+      <div class="grid2">${campoMotivo('p-m', r?r.motivo:'')}<label class="field"><span>Incidente / reclamação</span><input id="p-i" maxlength="40"></label></div>
+      <label class="field"><span>Justificativa</span><textarea id="p-d" rows="3" maxlength="3000">${esc(r?r.descricao:'')}</textarea></label>
+      <div class="err" id="p-e2" hidden></div>
+      <div class="actions"><button class="btn btn-pri">Enviar para aprovação</button><span class="muted">A simulação é refeita no servidor no envio.</span></div></form></div>`;
+  $('#p-env',el).onsubmit=async e=>{ e.preventDefault(); const er=$('#p-e2',el); er.hidden=true; lerProposta(el);
+    try{ const body={registro_id:r?r.id:'', titulo:$('#p-t',el).value, motivo:$('#p-m',el).value, descricao:$('#p-d',el).value, incidente:$('#p-i',el).value,
+        alimentador_id:P.alim, cenario:P.cenario, ajustes:P.ajustes};
+      const out=await api('propor',{body}); A.proposta=null; toast(`Proposta <b>${esc(out.registro.protocolo)}</b> enviada para aprovação.`,'ok');
+      await sincronizar(); A.f.status='abertos'; ir('registros'); abrirDetalhe(out.registro.id); }
+    catch(x){ er.textContent=x.message; er.hidden=false; } };
+}
+
+/* ===================================================================== usuários */
+async function pgUsuarios(el){
+  el.innerHTML='<div class="loading">Carregando…</div>';
+  let us=[]; try{ us=(await api('usuarios')).usuarios; }catch(e){ el.innerHTML=`<div class="alert alert-crit">${esc(e.message)}</div>`; return; }
+  el.innerHTML=`<div class="page-head"><div><div class="eyebrow">Administração</div><h1>Usuários</h1><p>Login igual ao da rede (matrícula). Com o login de rede ligado, a senha própria é opcional.</p></div><div class="actions"><button class="btn btn-pri" id="u-novo">Novo usuário</button></div></div>
+  <div class="tbl-wrap"><table class="t"><thead><tr><th>Nome</th><th>Login</th><th>Perfil</th><th>Área</th><th>Situação</th><th></th></tr></thead><tbody>
+  ${us.sort((a,b)=>a.nome.localeCompare(b.nome)).map(u=>`<tr><td><b>${esc(u.nome)}</b>${u.master?' <span class="tag">master</span>':''}${u.adm&&!u.master?' <span class="tag">ADM</span>':''}</td><td class="num">${esc(u.usuario)}</td><td>${esc(u.perfilNome)}</td><td>${esc(u.area||'')}</td><td>${u.ativo?'<span class="pill st-ok">Ativo</span>':'<span class="pill st-canc">Inativo</span>'}</td><td>${u.master?'':`<button class="btn btn-sm" data-u="${u.uid}">Editar</button>`}</td></tr>`).join('')}</tbody></table></div>`;
+  $('#u-novo',el).onclick=()=>modalUsuario(null, el);
+  $$('[data-u]',el).forEach(b=>b.onclick=()=>modalUsuario(us.find(u=>u.uid===b.dataset.u), el));
+}
+function modalUsuario(u, el){
+  openModal({title:u?'Editar usuário':'Novo usuário', size:'sm', body:`<form class="form" id="fu">
+    <label class="field"><span>Nome <em>*</em></span><input id="u-n" maxlength="80" value="${esc(u?u.nome:'')}" required></label>
+    <label class="field"><span>Login (matrícula) <em>*</em></span><input id="u-l" maxlength="40" value="${esc(u?u.usuario:'')}" required placeholder="Ex.: u1205817"></label>
+    <label class="field"><span>Perfil <em>*</em></span><select id="u-p">${Object.entries(A.ref.perfis).map(([k,t])=>`<option value="${k}" ${u&&u.perfil===k?'selected':''}>${esc(t)}</option>`).join('')}</select></label>
+    <label class="field"><span>Área</span><input id="u-a" maxlength="60" value="${esc(u?u.area||'':'')}" placeholder="Ex.: COI, Engenharia, Planejamento"></label>
+    <label class="field"><span>${u?'Nova senha (deixe em branco para manter)':'Senha (mín. 8; opcional com login de rede)'}</span><input id="u-s" type="password" autocomplete="new-password"></label>
+    <label class="chk"><input type="checkbox" id="u-adm" ${u&&u.adm?'checked':''}> Administrador (gerencia usuários)</label>
+    <label class="chk"><input type="checkbox" id="u-at" ${!u||u.ativo?'checked':''}> Ativo</label>
+    <div class="err" id="u-e" hidden></div>
+    <div class="m-foot"><button type="button" class="btn" data-close>Cancelar</button><button class="btn btn-pri">Salvar</button></div></form>`,
+    onMount:(w,close)=>{ $('#fu',w).onsubmit=async e=>{ e.preventDefault();
+      try{ await api('usuario_salvar',{body:{id:u?u.uid:'', nome:$('#u-n',w).value, usuario:$('#u-l',w).value, perfil:$('#u-p',w).value, area:$('#u-a',w).value, senha:$('#u-s',w).value, adm:$('#u-adm',w).checked, ativo:$('#u-at',w).checked}});
+        close(); toast('Usuário salvo.','ok'); pgUsuarios(el); }
+      catch(x){ $('#u-e',w).textContent=x.message; $('#u-e',w).hidden=false; } }; }});
+}
+
+/* ===================================================================== logs */
+async function pgLogs(el){
+  const f=A.flog||(A.flog={de:'',ate:'',tipo:'',q:''});
+  el.innerHTML=`<div class="page-head"><div><div class="eyebrow">Auditoria</div><h1>Logs</h1><p>Toda ação fica registrada, com data, hora, quem fez e de qual computador. A tabela também é gravada em <span class="mono">logs.csv</span>.</p></div><div class="actions"><a class="btn" href="api.php?acao=csv&arquivo=logs">Baixar CSV</a></div></div>
+  <div class="toolbar"><label class="fsel"><span>De</span><input type="date" id="l-de" value="${f.de}"></label><label class="fsel"><span>Até</span><input type="date" id="l-ate" value="${f.ate}"></label>
+    <label class="fsel"><span>Tipo</span><select id="l-t">${[['','Todas'],['registro.','Registros'],['acesso.','Acessos'],['usuario.','Usuários']].map(([k,t])=>`<option value="${k}" ${f.tipo===k?'selected':''}>${t}</option>`).join('')}</select></label>
+    <div class="search"><input id="l-q" placeholder="Buscar…" value="${esc(f.q)}"></div></div><div id="l-res" class="loading">Carregando…</div>`;
+  const carregar=async()=>{ try{ const r=await api('logs',{qs:new URLSearchParams({de:f.de,ate:f.ate,tipo:f.tipo,q:f.q,limite:300}).toString()});
+      $('#l-res',el).className=''; $('#l-res',el).innerHTML=r.logs.length?`<p class="muted">${r.total} registro(s)${r.total>r.logs.length?' · mostrando os '+r.logs.length+' mais recentes':''}</p><div class="tbl-wrap"><table class="t"><thead><tr><th>Data/hora</th><th>Ação</th><th>Descrição</th><th>Protocolo</th><th>Quem</th><th>IP</th></tr></thead><tbody>${r.logs.map(l=>`<tr><td class="num">${esc(dt(l.em))}</td><td>${esc(l.acaoNome)}</td><td>${esc(l.descricao)}</td><td class="num">${esc(l.protocolo)}</td><td>${esc(l.usuarioNome)} <span class="muted">${esc(l.usuarioLogin)}</span></td><td class="num">${esc(l.ip)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Nenhum registro no período.</div>'; }
+    catch(e){ $('#l-res',el).innerHTML=`<div class="alert alert-crit">${esc(e.message)}</div>`; } };
+  ['l-de','l-ate','l-t'].forEach(id=>$('#'+id,el).onchange=e=>{ f[{'l-de':'de','l-ate':'ate','l-t':'tipo'}[id]]=e.target.value; carregar(); });
+  let t; $('#l-q',el).oninput=e=>{ clearTimeout(t); t=setTimeout(()=>{ f.q=e.target.value; carregar(); },300); };
+  carregar();
+}
+
+iniciar();
+</script>
+</body>
+</html>
