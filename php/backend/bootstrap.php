@@ -19,6 +19,15 @@ define('APP_RAIZ', dirname(__DIR__));
 
 $GLOBALS['APP_CONFIG'] = require APP_RAIZ . '/config/config.php';
 
+// Senhas e ajustes deste servidor ficam em config.local.php, que NÃO vai para o git
+// (modelo: config/config.local.example.php). Ele sobrescreve só o que definir.
+if (is_file(APP_RAIZ . '/config/config.local.php')) {
+    $GLOBALS['APP_CONFIG'] = array_replace_recursive(
+        $GLOBALS['APP_CONFIG'],
+        require APP_RAIZ . '/config/config.local.php'
+    );
+}
+
 // Carregamento explícito das classes (ordem respeita dependências)
 $libDir = __DIR__ . '/lib/';
 require_once $libDir . 'Complexo.php';

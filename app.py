@@ -1,3 +1,5 @@
+import os
+
 from flask import Flask, render_template, request, jsonify
 import pandapower as pp
 import pandas as pd
@@ -160,8 +162,9 @@ def simulate():
         return jsonify(results)
     except pp.pandapower.LoadflowNotConverged:
         return jsonify({'error': 'Fluxo de carga não convergiu. Verifique se os parâmetros de carga/geração não são absurdamente altos.'}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        app.logger.exception('Falha na simulação')
+        return jsonify({'error': 'Erro interno na simulação.'}), 500
 
 @app.route('/api/optimize_tap', methods=['POST'])
 def optimize_tap():
@@ -213,9 +216,16 @@ def optimize_tap():
             'results': results_list
         })
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        app.logger.exception('Falha na simulação')
+        return jsonify({'error': 'Erro interno na simulação.'}), 500
 
 if __name__ == '__main__':
-    # 0.0.0.0 permite acesso pela rede local; use debug=False em produção
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    # Por padrão só este computador acessa (127.0.0.1) e o debug fica desligado.
+    #   SIMULADOR_HOST=0.0.0.0  -> libera para a rede local (só em rede confiável)
+    #   SIMULADOR_DEBUG=1       -> depurador do Flask (nunca junto com 0.0.0.0)
+    host = os.environ.get('SIMULADOR_HOST', '127.0.0.1')
+    debug = os.environ.get('SIMULADOR_DEBUG') == '1'
+    if debug and host not in ('127.0.0.1', 'localhost'):
+        raise SystemExit('Recusado: o depurador do Flask executa código e não pode ficar exposto na rede.')
+    app.run(host=host, port=8080, debug=debug)

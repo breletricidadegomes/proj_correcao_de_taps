@@ -40,7 +40,7 @@ return array(
         'porta'    => 3306,          // MySQL: 3306 | PostgreSQL: 5432
         'banco'    => 'regulacao_tap',
         'usuario'  => 'app_tap',
-        'senha'    => 'TROQUE_ESTA_SENHA',
+        'senha'    => '',            // NUNCA aqui: defina em config.local.php
         'charset'  => 'utf8',        // MySQL 5.5.3+ aceita 'utf8mb4'
     ),
 
@@ -75,4 +75,10 @@ return array(
     // Nome de usuário: se o servidor web autentica via AD/LDAP (Basic/Kerberos),
     // $_SERVER['REMOTE_USER'] é usado automaticamente como operador da manobra.
     'usar_remote_user' => true,
+
+    // Exigir usuário autenticado pelo servidor para REGISTRAR manobras.
+    //   null  = automático: exige fora do modo demo, libera no modo demo
+    //   true  = sempre exige (recomendado em produção)
+    //   false = aceita nome digitado (só em ambiente de teste isolado)
+    'exigir_remote_user' => null,
 );

@@ -70,14 +70,17 @@ mysql -u root -p < sql/schema_mysql.sql
 ```
 Crie o usuário de aplicação (comandos comentados no início do script — privilégios
 mínimos: SELECT geral, INSERT no histórico e UPDATE apenas em `tap_atual`).
-Em `config/config.php`: `'modo_demo' => false`, `'driver' => 'mysql'`, credenciais.
+Copie `config/config.local.example.php` para **`config/config.local.php`** e preencha
+`'modo_demo' => false`, `'driver' => 'mysql'` e as credenciais. Esse arquivo está no
+`.gitignore`: a senha do banco nunca vai para o repositório (o `config.php` versionado
+fica sem senha).
 
 ### 3.3 Produção com PostgreSQL
 ```bash
 createdb regulacao_tap
 psql -d regulacao_tap -f sql/schema_postgresql.sql
 ```
-Em `config/config.php`: `'driver' => 'pgsql'`, `'porta' => 5432`.
+Em `config/config.local.php`: `'driver' => 'pgsql'`, `'porta' => 5432`.
 
 ### 3.4 Servidor web
 - **Apache**: os `.htaccess` em `config/`, `sql/` e `backend/lib/` bloqueiam acesso direto
@@ -94,7 +97,13 @@ Em `config/config.php`: `'driver' => 'pgsql'`, `'porta' => 5432`.
 ### 3.5 Autenticação do operador
 Se o servidor autentica via AD/LDAP (Kerberos, Basic, `mod_auth_*`), o usuário em
 `$_SERVER['REMOTE_USER']` é gravado automaticamente como operador da manobra
-(o campo fica somente leitura). Sem isso, o operador digita o nome.
+(o campo fica somente leitura).
+
+**Fora do modo demo o registro de manobra exige esse usuário**: se o servidor não
+autenticar (`REMOTE_USER` vazio), `registrar` responde 403. Isso impede que alguém que
+alcance o servidor grave manobras com um nome inventado. Para testes isolados, defina
+`'exigir_remote_user' => false` no `config.local.php`. No IIS: *Autenticação do Windows*
+ligada e *Anônima* desligada; no Apache: `mod_auth_kerb`/`mod_authnz_ldap` com `Require valid-user`.
 
 ## 4. Modelo de cálculo
 

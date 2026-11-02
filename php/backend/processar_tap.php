@@ -243,6 +243,17 @@ try {
 
         // ---------------------------------------------------------------------
         case 'registrar':
+            // Fora do modo demo, só registra quem o servidor autenticou (AD/Windows):
+            // sem isso, qualquer um que alcance o servidor gravaria manobras com
+            // um nome de operador inventado.
+            $cfgSeg = app_config();
+            $exigir = isset($cfgSeg['exigir_remote_user']) && $cfgSeg['exigir_remote_user'] !== null
+                ? (bool) $cfgSeg['exigir_remote_user']
+                : empty($cfgSeg['modo_demo']);
+            if ($exigir && empty($_SERVER['REMOTE_USER'])) {
+                responder(false, 'Registro bloqueado: o servidor não identificou o usuário. '
+                    . 'Ative a autenticação do Windows/AD (veja o README, seção 3.5).', 403);
+            }
             $ctx = carregar_contexto($repo, $in, true);
             $tapNovo = ler_inteiro($in, 'tap_novo');
             validar_tap($ctx['equipamento'], $tapNovo);
@@ -260,7 +271,7 @@ try {
 
             // Operador: usuário autenticado no servidor (AD/LDAP) tem prioridade
             $cfg = app_config();
-            if ($cfg['usar_remote_user'] && !empty($_SERVER['REMOTE_USER'])) {
+            if (($cfg['usar_remote_user'] || $exigir) && !empty($_SERVER['REMOTE_USER'])) {
                 $operador = substr((string) $_SERVER['REMOTE_USER'], 0, 80);
             } else {
                 $operador = ler_texto($in, 'operador', 80, true);

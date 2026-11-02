@@ -44,6 +44,11 @@ python app.py
 
 Abra <http://localhost:8080>.
 
+> **Segurança:** por padrão o servidor só aceita conexões deste computador e o depurador
+> do Flask fica desligado. Para liberar na rede local (só em rede confiável):
+> `SIMULADOR_HOST=0.0.0.0 python app.py`. Para depurar: `SIMULADOR_DEBUG=1 python app.py`
+> (o app se recusa a ligar o depurador com o servidor aberto na rede).
+
 ### Testes
 
 ```bash
